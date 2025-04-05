@@ -1,16 +1,16 @@
-# bsitdolist
+BSIT To-Do List
+A Flutter-based To-Do List application developed as part of the BSIT program. This project demonstrates a clean, modern task management solution built using Flutter, following Cupertino (iOS-style) design guidelines.
 
-A new Flutter project.
+📱 About the App
+BSIT To-Do List helps users manage their daily tasks efficiently. It allows users to:
 
-## Getting Started
+Add, update, and delete tasks
 
-This project is a starting point for a Flutter application.
+Organize tasks by categories
 
-A few resources to get you started if this is your first Flutter project:
+Use a clean and intuitive user interface
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+Experience smooth performance on both Android and iOS devices
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+🚀 Deployment
+This app is on Going built and deployed to the Google Play Store, making it publicly accessible for Android users.
