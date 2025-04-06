@@ -6,8 +6,10 @@ import 'package:intl/intl.dart';
 import 'notes.dart';
 
 void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
   await Hive.initFlutter();
   await Hive.openBox('database');
+  await Hive.openBox('notesBox');
   runApp(const CupertinoApp(
     debugShowCheckedModeBanner: false,
     home: MyApp(),
@@ -447,7 +449,7 @@ class _MyAppState extends State<MyApp> {
                               child: const Icon(
                                 CupertinoIcons.info_circle,
                                 size: 23,
-                                color: CupertinoColors.systemBlue,
+                                color: CupertinoColors.systemYellow,
                               ),
                               onPressed: () {
                                 showCupertinoDialog(
@@ -524,7 +526,9 @@ class _MyAppState extends State<MyApp> {
                             mainAxisAlignment: MainAxisAlignment.spaceAround,
                             children: [
                               CupertinoButton(
-                                child: const Text('Mark as Completed'),
+                                child: const Text('Mark as Completed',style: TextStyle(
+                                  color: CupertinoColors.systemYellow,
+                                )),
                                 onPressed: _markSelectedAsCompleted,
                               ),
                               CupertinoButton(
@@ -533,7 +537,7 @@ class _MyAppState extends State<MyApp> {
                                 child: const Text(
                                   'Delete',
                                   style: TextStyle(
-                                    color: CupertinoColors.systemRed,
+                                    color: CupertinoColors.systemYellow,
                                     fontWeight: FontWeight.w600,
                                   ),
                                 ),
@@ -543,14 +547,21 @@ class _MyAppState extends State<MyApp> {
                         )
                       else
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                           color: CupertinoColors.systemGroupedBackground,
                           child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              todolist.isNotEmpty
-                                  ? Text('${todolist.length} tasks')
-                                  : const SizedBox(),
+                              Expanded(
+                                child: Center(
+                                  child: Text(
+                                    '${todolist.isNotEmpty ? todolist.length : 0} tasks',
+                                    style: const TextStyle(
+                                      fontSize: 14,
+                                      color: CupertinoColors.black,
+                                    ),
+                                  ),
+                                ),
+                              ),
                               CupertinoButton(
                                 padding: EdgeInsets.zero,
                                 child: const Icon(
@@ -601,6 +612,7 @@ class _MyAppState extends State<MyApp> {
                             ],
                           ),
                         ),
+
                     ],
                   ),
                 ),
