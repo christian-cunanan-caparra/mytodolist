@@ -8,8 +8,8 @@ import 'notes.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Hive.initFlutter();
-  await Hive.openBox('database');
-  await Hive.openBox('notesBox');
+  await Hive.openBox('taskBox'); // Consistent box name
+  await Hive.openBox('notesBox'); // For notes
   runApp(const CupertinoApp(
     debugShowCheckedModeBanner: false,
     home: MyApp(),
@@ -26,9 +26,10 @@ class _MyAppState extends State<MyApp> {
   List<Map<String, dynamic>> todolist = [];
   final TextEditingController _addTask = TextEditingController();
   final TextEditingController _editTask = TextEditingController();
-  final box = Hive.box('database');
+  final box = Hive.box('taskBox'); // Consistent box name
   List<int> selectedIndices = [];
   String _searchQuery = '';
+  bool _isLoading = true; // Added loading state
 
   @override
   void initState() {
@@ -36,14 +37,22 @@ class _MyAppState extends State<MyApp> {
     _loadTasks();
   }
 
-  void _loadTasks() {
-    final data = box.get('todo');
-    if (data != null && data is List) {
-      todolist = (data as List).map((e) => Map<String, dynamic>.from(e)).toList().reversed.toList();
-    } else {
-      todolist = [];
-      box.put('todo', todolist);
-    }
+  Future<void> _loadTasks() async {
+    setState(() => _isLoading = true);
+
+    final data = box.get('todo', defaultValue: []); // Consistent key name
+
+    todolist = (data as List)
+        .map((e) => Map<String, dynamic>.from(e))
+        .map((task) {
+      task.putIfAbsent('date', () => DateTime.now().toIso8601String());
+      return task;
+    })
+        .toList()
+        .reversed
+        .toList();
+
+    setState(() => _isLoading = false);
   }
 
   void _saveTask(String taskText) {
@@ -59,31 +68,23 @@ class _MyAppState extends State<MyApp> {
     });
   }
 
-  void _updateTask(int index, String newText) {
-    setState(() {
-      todolist[index]['task'] = newText;
-      todolist[index]['date'] = DateTime.now().toIso8601String();
-
-      final updatedTask = todolist.removeAt(index);
-      todolist.insert(0, updatedTask);
-
-      _saveToDatabase();
-    });
-  }
-
   void _saveToDatabase() {
     box.put('todo', List<Map<String, dynamic>>.from(todolist.reversed));
   }
 
+
   String _formatDate(dynamic isoDate) {
-    final dt = DateTime.tryParse(isoDate ?? '');
+    if (isoDate == null || isoDate is! String || isoDate.isEmpty) return '';
+    final dt = DateTime.tryParse(isoDate);
     return dt != null ? DateFormat('MMMM d, yyyy').format(dt) : '';
   }
 
   String _formatTime(dynamic isoDate) {
-    final dt = DateTime.tryParse(isoDate ?? '');
+    if (isoDate == null || isoDate is! String || isoDate.isEmpty) return '';
+    final dt = DateTime.tryParse(isoDate);
     return dt != null ? DateFormat('h:mm a').format(dt) : '';
   }
+
 
   bool _isToday(DateTime date) {
     final now = DateTime.now();
@@ -270,7 +271,7 @@ class _MyAppState extends State<MyApp> {
               child: const Text('Update'),
               onPressed: () {
                 if (_editTask.text.trim().isNotEmpty) {
-                  _updateTask(index, _editTask.text.trim());
+
                 }
                 _editTask.clear();
                 Navigator.pop(context);
@@ -371,7 +372,7 @@ class _MyAppState extends State<MyApp> {
     );
   }
 
-  @override
+
   @override
   Widget build(BuildContext context) {
     final today = _filterByDate(_isToday);
@@ -381,7 +382,9 @@ class _MyAppState extends State<MyApp> {
       child: SafeArea(
         child: LayoutBuilder(
           builder: (context, constraints) {
-            return SingleChildScrollView(
+            return _isLoading
+                ? const Center(child: CupertinoActivityIndicator())
+                : SingleChildScrollView(
               padding: EdgeInsets.only(
                 bottom: MediaQuery.of(context).viewInsets.bottom,
               ),
@@ -623,5 +626,4 @@ class _MyAppState extends State<MyApp> {
       ),
     );
   }
-
 }
