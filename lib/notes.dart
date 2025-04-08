@@ -46,24 +46,26 @@ class _NotesPageState extends State<NotesPage> {
   }
 
   Map<String, List<Map<String, dynamic>>> _groupNotes(List<Map<String, dynamic>> notes) {
-    // Sort notes by: pinned status first (newest pinned on top), then by date
-    notes.sort((a, b) {
-      final aPinned = a['isPinned'] ?? false;
-      final bPinned = b['isPinned'] ?? false;
+    // Separate pinned notes first
+    final pinnedNotes = notes.where((note) => note['isPinned'] == true).toList();
+    final unpinnedNotes = notes.where((note) => note['isPinned'] != true).toList();
 
-      // If both are pinned or both are not pinned, sort by date
-      if (aPinned == bPinned) {
-        final dateA = DateTime.parse(a['date'] ?? '1970-01-01');
-        final dateB = DateTime.parse(b['date'] ?? '1970-01-01');
-        return dateB.compareTo(dateA); // Newest first
-      }
-      // If one is pinned, it comes first
-      return bPinned ? 1 : -1;
+    // Sort unpinned notes by date (newest first)
+    unpinnedNotes.sort((a, b) {
+      final dateA = DateTime.parse(a['date'] ?? '1970-01-01');
+      final dateB = DateTime.parse(b['date'] ?? '1970-01-01');
+      return dateB.compareTo(dateA);
     });
 
     final groups = <String, List<Map<String, dynamic>>>{};
 
-    for (final note in notes) {
+    // Add pinned notes section if there are any pinned notes
+    if (pinnedNotes.isNotEmpty) {
+      groups['Pinned'] = pinnedNotes;
+    }
+
+    // Group remaining notes by date
+    for (final note in unpinnedNotes) {
       final date = DateTime.parse(note['date'] ?? DateTime.now().toString());
       final group = _getDateGroup(date);
 
@@ -288,176 +290,193 @@ class _NotesPageState extends State<NotesPage> {
               ),
             ),
             const SizedBox(height: 12),
-      Expanded(
-        child: filteredNotes.isEmpty
-            ? const Center(
-          child: Text(
-            'No notes yet!',
-            style: TextStyle(color: CupertinoColors.black),
-          ),
-        )
-            : ListView.builder(
-          itemCount: groupedNotes.length,
-          itemBuilder: (context, index) {
-            final groupKey = groupedNotes.keys.elementAt(index);
-            final groupNotes = groupedNotes[groupKey]!;
-
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 16.0, vertical: 8),
-                  child: Text(
-                    groupKey,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                      color: CupertinoColors.black,
-                    ),
-                  ),
+            Expanded(
+              child: filteredNotes.isEmpty
+                  ? const Center(
+                child: Text(
+                  'No notes yet!',
+                  style: TextStyle(color: CupertinoColors.black),
                 ),
-                ...groupNotes.map((note) {
-                  final date = DateTime.parse(note['date'] ?? DateTime.now().toString());
-                  final formattedTime = DateFormat('h:mm a').format(date);
+              )
+                  : ListView.builder(
+                itemCount: groupedNotes.length,
+                itemBuilder: (context, index) {
+                  final groupKey = groupedNotes.keys.elementAt(index);
+                  final groupNotes = groupedNotes[groupKey]!;
 
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 6),
-                    child: GestureDetector(
-                      onLongPress: () => _showNoteOptions(context, note),
-                      child: CupertinoButton(
-                        padding: EdgeInsets.zero,
-                        onPressed: () async {
-                          final updatedNote = await Navigator.push(
-                            context,
-                            CupertinoPageRoute(
-                              builder: (context) => NoteEditor(
-                                initialTitle: note['title']?.toString() ?? '',
-                                initialContent: note['content']?.toString() ?? '',
-                                initialIsBold: note['isBold'] ?? false,
-                                initialIsItalic: note['isItalic'] ?? false,
-                                initialIsUnderline: note['isUnderline'] ?? false,
-                                initialIsStrikethrough: note['isStrikethrough'] ?? false,
-                                initialTextAlignment: note['textAlignment'] ?? 'left',
-                                initialFontSize: note['fontSize'] ?? 16.0,
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16.0, vertical: 8),
+                        child: Row(
+                          children: [
+                            if (groupKey == 'Pinned')
+                              const Icon(
+                                CupertinoIcons.pin_fill,
+                                size: 16,
+                                color: CupertinoColors.systemOrange,
+                              ),
+                            if (groupKey == 'Pinned')
+                              const SizedBox(width: 6),
+                            Text(
+                              groupKey,
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                                color: groupKey == 'Pinned'
+                                    ? CupertinoColors.systemOrange
+                                    : CupertinoColors.black,
                               ),
                             ),
-                          );
-
-                          if (updatedNote != null && updatedNote['title'] != null) {
-                            await notesBox.put(
-                              note['key'],
-                              {
-                                'title': updatedNote['title'],
-                                'content': updatedNote['content'],
-                                'date': DateTime.now().toString(),
-                                'isBold': updatedNote['isBold'],
-                                'isItalic': updatedNote['isItalic'],
-                                'isUnderline': updatedNote['isUnderline'],
-                                'isStrikethrough': updatedNote['isStrikethrough'],
-                                'textAlignment': updatedNote['textAlignment'],
-                                'fontSize': updatedNote['fontSize'],
-                                'isPinned': note['isPinned'] ?? false,
-                              },
-                            );
-                            setState(() {});
-                          }
-                        },
-                        child: Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                          decoration: BoxDecoration(
-                            color: CupertinoColors.white,
-                            borderRadius: BorderRadius.circular(12),
-                            boxShadow: [
-                              BoxShadow(
-                                color: CupertinoColors.systemGrey.withOpacity(0.1),
-                                blurRadius: 4,
-                                offset: const Offset(0, 2),
-                              ),
-                            ],
-                          ),
-                          child: IntrinsicHeight(
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                if (note['isPinned'])
-                                  Container(
-                                    width: 24,
-
-                                    alignment: Alignment.centerLeft,
-                                    child: const Icon(
-                                      CupertinoIcons.pin_fill,
-
-                                      size: 30,
-                                      color: CupertinoColors.systemOrange,
-                                    ),
-                                  ),
-                                Expanded(
-                                  child: Padding(
-                                    padding: const EdgeInsets.only(left: 10),
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      mainAxisAlignment: MainAxisAlignment.center,
-                                      children: [
-                                        Row(
-                                          children: [
-                                            Expanded(
-                                              child: Text(
-                                                note['title']?.toString() ?? 'No title',
-                                                style: const TextStyle(
-                                                  fontWeight: FontWeight.w600,
-                                                  fontSize: 16,
-                                                  color: CupertinoColors.black,
-                                                ),
-                                              ),
-                                            ),
-                                            Text(
-                                              formattedTime,
-                                              style: const TextStyle(
-                                                fontSize: 13,
-                                                color: CupertinoColors.systemGrey,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          _getPlainTextPreview(note['content'].toString()),
-
-                                          maxLines: 2,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(
-                                            fontSize: 14,
-                                            color: CupertinoColors.systemGrey,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 4),
-                                        const Text(
-                                          'Notes',
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            color: CupertinoColors.systemGrey2,
-                                            fontStyle: FontStyle.italic,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
+                          ],
                         ),
                       ),
-                    ),
+                      ...groupNotes.map((note) {
+                        final date = DateTime.parse(note['date'] ?? DateTime.now().toString());
+                        final formattedTime = DateFormat('h:mm a').format(date);
+
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 6),
+                          child: GestureDetector(
+                            onLongPress: () => _showNoteOptions(context, note),
+                            child: CupertinoButton(
+                              padding: EdgeInsets.zero,
+                              onPressed: () async {
+                                final updatedNote = await Navigator.push(
+                                  context,
+                                  CupertinoPageRoute(
+                                    builder: (context) => NoteEditor(
+                                      initialTitle: note['title']?.toString() ?? '',
+                                      initialContent: note['content']?.toString() ?? '',
+                                      initialIsBold: note['isBold'] ?? false,
+                                      initialIsItalic: note['isItalic'] ?? false,
+                                      initialIsUnderline: note['isUnderline'] ?? false,
+                                      initialIsStrikethrough: note['isStrikethrough'] ?? false,
+                                      initialTextAlignment: note['textAlignment'] ?? 'left',
+                                      initialFontSize: note['fontSize'] ?? 16.0,
+                                    ),
+                                  ),
+                                );
+
+                                if (updatedNote != null && updatedNote['title'] != null) {
+                                  await notesBox.put(
+                                    note['key'],
+                                    {
+                                      'title': updatedNote['title'],
+                                      'content': updatedNote['content'],
+                                      'date': DateTime.now().toString(),
+                                      'isBold': updatedNote['isBold'],
+                                      'isItalic': updatedNote['isItalic'],
+                                      'isUnderline': updatedNote['isUnderline'],
+                                      'isStrikethrough': updatedNote['isStrikethrough'],
+                                      'textAlignment': updatedNote['textAlignment'],
+                                      'fontSize': updatedNote['fontSize'],
+                                      'isPinned': note['isPinned'] ?? false,
+                                    },
+                                  );
+                                  setState(() {});
+                                }
+                              },
+                              child: Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                decoration: BoxDecoration(
+                                  color: CupertinoColors.white,
+                                  borderRadius: BorderRadius.circular(12),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: CupertinoColors.systemGrey.withOpacity(0.1),
+                                      blurRadius: 4,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ],
+                                  border: groupKey == 'Pinned'
+                                      ? Border.all(
+                                    color: CupertinoColors.systemOrange.withOpacity(0.3),
+                                    width: 1.5,
+                                  )
+                                      : null,
+                                ),
+                                child: IntrinsicHeight(
+                                  child: Row(
+                                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                                    children: [
+                                      if (note['isPinned'])
+                                        Container(
+                                          width: 24,
+                                          alignment: Alignment.centerLeft,
+                                          child: const Icon(
+                                            CupertinoIcons.pin_fill,
+                                            size: 20,
+                                            color: CupertinoColors.systemOrange,
+                                          ),
+                                        ),
+                                      Expanded(
+                                        child: Padding(
+                                          padding: const EdgeInsets.only(left: 10),
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            mainAxisAlignment: MainAxisAlignment.center,
+                                            children: [
+                                              Row(
+                                                children: [
+                                                  Expanded(
+                                                    child: Text(
+                                                      note['title']?.toString() ?? 'No title',
+                                                      style: const TextStyle(
+                                                        fontWeight: FontWeight.w600,
+                                                        fontSize: 16,
+                                                        color: CupertinoColors.black,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  Text(
+                                                    formattedTime,
+                                                    style: const TextStyle(
+                                                      fontSize: 13,
+                                                      color: CupertinoColors.systemGrey,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                              const SizedBox(height: 4),
+                                              Text(
+                                                _getPlainTextPreview(note['content'].toString()),
+                                                maxLines: 2,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: const TextStyle(
+                                                  fontSize: 14,
+                                                  color: CupertinoColors.systemGrey,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 4),
+                                              const Text(
+                                                'Notes',
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  color: CupertinoColors.systemGrey2,
+                                                  fontStyle: FontStyle.italic,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ],
                   );
-                }).toList(),
-              ],
-            );
-          },
-        ),
-      ),
+                },
+              ),
+            ),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               color: CupertinoColors.systemGroupedBackground,
