@@ -598,7 +598,7 @@ class _NotesPageState extends State<NotesPage> {
       ),
     );
   }
-
+//as
   Future<void> _openNoteEditor(BuildContext context, Map<String, dynamic> note) async {
     final updatedNote = await Navigator.push(
       context,
