@@ -1,7 +1,8 @@
+
 import 'package:flutter/cupertino.dart';
 import 'package:hive/hive.dart';
 import 'package:hive_flutter/hive_flutter.dart';
-import 'package:intl/intl.dart';
+// import 'package:intl/intl.dart';
 
 import 'notes.dart';
 
@@ -73,37 +74,6 @@ class _MyAppState extends State<MyApp> {
   }
 
 
-  String _formatDate(dynamic isoDate) {
-    if (isoDate == null || isoDate is! String || isoDate.isEmpty) return '';
-    final dt = DateTime.tryParse(isoDate);
-    return dt != null ? DateFormat('MMMM d, yyyy').format(dt) : '';
-  }
-
-  String _formatTime(dynamic isoDate) {
-    if (isoDate == null || isoDate is! String || isoDate.isEmpty) return '';
-    final dt = DateTime.tryParse(isoDate);
-    return dt != null ? DateFormat('h:mm a').format(dt) : '';
-  }
-
-
-  bool _isToday(DateTime date) {
-    final now = DateTime.now();
-    return date.year == now.year && date.month == now.month && date.day == now.day;
-  }
-
-  bool _isLast30Days(DateTime date) {
-    final now = DateTime.now();
-    return date.isAfter(now.subtract(const Duration(days: 30))) && !_isToday(date);
-  }
-
-  List<Map<String, dynamic>> _filterByDate(bool Function(DateTime) predicate) {
-    return todolist.where((task) {
-      final dt = DateTime.tryParse(task['date']);
-      final matchesDate = dt != null && predicate(dt);
-      final matchesQuery = _searchQuery.isEmpty || task['task'].toLowerCase().contains(_searchQuery);
-      return matchesDate && matchesQuery;
-    }).toList();
-  }
 
   Widget _buildTaskItem(Map<String, dynamic> task, int index) {
     final isSelected = selectedIndices.contains(index);
@@ -123,9 +93,29 @@ class _MyAppState extends State<MyApp> {
             }
           });
         } else {
-          _showEditDialog(index, task['task']);
+          // Only allow editing if the task is not completed
+          if (todolist[index]['status'] == false) {
+            _showEditDialog(index, task['task']);
+          } else {
+            showCupertinoDialog(
+              context: context,
+              builder: (context) => CupertinoAlertDialog(
+                title: const Text('Editing Not Allowed'),
+                content: const Text('This task is already marked as completed.'),
+                actions: [
+                  CupertinoDialogAction(
+                    isDestructiveAction: true,
+                    child: const Text('OK'),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+            );
+          }
+
         }
       },
+
       onLongPress: () {
         setState(() {
           if (isSelected) {
@@ -138,14 +128,21 @@ class _MyAppState extends State<MyApp> {
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8),
         child: Container(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: isSelected
-                ? CupertinoColors.systemGrey4
-                : CupertinoColors.systemGroupedBackground,
-            borderRadius: BorderRadius.circular(12),
+            color: CupertinoColors.white,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                // ignore: deprecated_member_use
+                color: CupertinoColors.black.withOpacity(0.05),
+                blurRadius: 8,
+                offset: const Offset(0, 4),
+              ),
+            ],
           ),
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               if (selectedIndices.isNotEmpty)
                 Padding(
@@ -167,48 +164,42 @@ class _MyAppState extends State<MyApp> {
                       task['task'],
                       style: TextStyle(
                         fontSize: 16,
-                        fontWeight: FontWeight.w500,
+                        fontWeight: FontWeight.w600,
                         decoration: task['status']
                             ? TextDecoration.lineThrough
                             : null,
                       ),
                     ),
                     const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        Text(
-                          _formatDate(task['date']),
-                          style: const TextStyle(
-                            fontSize: 13,
-                            color: CupertinoColors.systemGrey,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          _formatTime(task['date']),
-                          style: const TextStyle(
-                            fontSize: 13,
-                            color: CupertinoColors.systemGrey,
-                          ),
-                        ),
-                      ],
+                    Text(
+                      task['note'] ?? '',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: CupertinoColors.black,
+                      ),
                     ),
+
                   ],
                 ),
               ),
               if (selectedIndices.isEmpty)
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: statusColor.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    status,
-                    style: TextStyle(
-                      color: statusColor,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 12,
+                Padding(
+                  padding: const EdgeInsets.only(left: 8),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: statusColor.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      status,
+                      style: TextStyle(
+                        color: statusColor,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                      ),
                     ),
                   ),
                 ),
@@ -216,6 +207,8 @@ class _MyAppState extends State<MyApp> {
           ),
         ),
       ),
+
+
     );
   }
 
@@ -271,7 +264,17 @@ class _MyAppState extends State<MyApp> {
               child: const Text('Update'),
               onPressed: () {
                 if (_editTask.text.trim().isNotEmpty) {
+                  final updatedTask = {
+                    ...todolist[index],
+                    "task": _editTask.text.trim(),
+                    "date": DateTime.now().toIso8601String(),
+                  };
 
+                  setState(() {
+                    todolist.removeAt(index);
+                    todolist.insert(0, updatedTask); // Put updated pending at top
+                    _saveToDatabase();
+                  });
                 }
                 _editTask.clear();
                 Navigator.pop(context);
@@ -282,6 +285,7 @@ class _MyAppState extends State<MyApp> {
       },
     );
   }
+
 
   void _showDeleteConfirmation() {
     showCupertinoDialog(
@@ -324,7 +328,7 @@ class _MyAppState extends State<MyApp> {
         context: context,
         builder: (context) {
           return CupertinoAlertDialog(
-            title: const Text('All tasks already completed'),
+            title: const Text('Tasks already completed'),
             actions: [
               CupertinoDialogAction(
                 isDestructiveAction: true,
@@ -373,10 +377,25 @@ class _MyAppState extends State<MyApp> {
   }
 
 
+  List<Map<String, dynamic>> _getPendingTasks() {
+    return todolist.where((task) =>
+    task['status'] == false &&
+        task['task'].toString().toLowerCase().contains(_searchQuery)
+    ).toList();
+  }
+
+  List<Map<String, dynamic>> _getCompletedTasks() {
+    return todolist.where((task) =>
+    task['status'] == true &&
+        task['task'].toString().toLowerCase().contains(_searchQuery)
+    ).toList();
+  }
+
+
   @override
   Widget build(BuildContext context) {
-    final today = _filterByDate(_isToday);
-    final last30Days = _filterByDate(_isLast30Days);
+    final notCompleted = _getPendingTasks();
+    final completed = _getCompletedTasks();
 
     return CupertinoPageScaffold(
       child: SafeArea(
@@ -393,7 +412,6 @@ class _MyAppState extends State<MyApp> {
                 child: IntrinsicHeight(
                   child: Column(
                     children: [
-
                       Padding(
                         padding: const EdgeInsets.all(16.0),
                         child: Row(
@@ -422,7 +440,7 @@ class _MyAppState extends State<MyApp> {
                                   child: const Icon(
                                     CupertinoIcons.line_horizontal_3,
                                     size: 26,
-                                    color: CupertinoColors.systemGrey,
+                                    color: CupertinoColors.systemYellow,
                                   ),
                                 ),
                               ],
@@ -486,10 +504,6 @@ class _MyAppState extends State<MyApp> {
                           ],
                         ),
                       ),
-
-
-
-
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 16.0),
                         child: CupertinoSearchTextField(
@@ -506,33 +520,32 @@ class _MyAppState extends State<MyApp> {
                         ),
                       ),
                       const SizedBox(height: 12),
-
-
                       Expanded(
                         child: todolist.isEmpty
                             ? const Center(child: Text("No tasks yet!"))
                             : Column(
                           children: [
-                            _buildSection('Today', today),
-                            _buildSection('Previous 30 Days', last30Days),
+                            _buildSection('Not Completed', notCompleted),
+                            if (completed.isNotEmpty)
+                              _buildSection('Completed', completed),
                           ],
                         ),
                       ),
-
-
                       if (selectedIndices.isNotEmpty)
                         Container(
-                          padding:
-                          const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                           color: CupertinoColors.systemGroupedBackground,
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.spaceAround,
                             children: [
                               CupertinoButton(
-                                child: const Text('Mark as Completed',style: TextStyle(
-                                  color: CupertinoColors.systemYellow,
-                                )),
                                 onPressed: _markSelectedAsCompleted,
+                                child: const Text(
+                                  'Mark as Completed',
+                                  style: TextStyle(
+                                    color: CupertinoColors.systemYellow,
+                                  ),
+                                ),
                               ),
                               CupertinoButton(
                                 padding: EdgeInsets.zero,
@@ -615,7 +628,6 @@ class _MyAppState extends State<MyApp> {
                             ],
                           ),
                         ),
-
                     ],
                   ),
                 ),
@@ -626,4 +638,6 @@ class _MyAppState extends State<MyApp> {
       ),
     );
   }
+
 }
+
