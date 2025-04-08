@@ -11,7 +11,7 @@ void main() async {
     home: NotesPage(),
   ));
 }
-// test
+
 class NotesPage extends StatefulWidget {
   const NotesPage({super.key});
 
@@ -22,6 +22,9 @@ class NotesPage extends StatefulWidget {
 class _NotesPageState extends State<NotesPage> {
   String _searchQuery = '';
   late Box notesBox;
+
+  Set<dynamic> _selectedNoteKeys = {};
+  bool _isSelectionMode = false;
 
   @override
   void initState() {
@@ -46,11 +49,9 @@ class _NotesPageState extends State<NotesPage> {
   }
 
   Map<String, List<Map<String, dynamic>>> _groupNotes(List<Map<String, dynamic>> notes) {
-    // Separate pinned notes first
     final pinnedNotes = notes.where((note) => note['isPinned'] == true).toList();
     final unpinnedNotes = notes.where((note) => note['isPinned'] != true).toList();
 
-    // Sort unpinned notes by date (newest first)
     unpinnedNotes.sort((a, b) {
       final dateA = DateTime.parse(a['date'] ?? '1970-01-01');
       final dateB = DateTime.parse(b['date'] ?? '1970-01-01');
@@ -59,12 +60,10 @@ class _NotesPageState extends State<NotesPage> {
 
     final groups = <String, List<Map<String, dynamic>>>{};
 
-    // Add pinned notes section if there are any pinned notes
     if (pinnedNotes.isNotEmpty) {
       groups['Pinned'] = pinnedNotes;
     }
 
-    // Group remaining notes by date
     for (final note in unpinnedNotes) {
       final date = DateTime.parse(note['date'] ?? DateTime.now().toString());
       final group = _getDateGroup(date);
@@ -80,8 +79,6 @@ class _NotesPageState extends State<NotesPage> {
 
   String _getPlainTextPreview(String? content) {
     if (content == null) return '';
-
-
     return content
         .replaceAll('[style bold="true"]', '')
         .replaceAll('[style italic="true"]', '')
@@ -90,80 +87,59 @@ class _NotesPageState extends State<NotesPage> {
         .replaceAll('[/style]', '');
   }
 
-
-  void _showNoteOptions(BuildContext context, Map<String, dynamic> note) {
-    showCupertinoModalPopup(
-      context: context,
-      builder: (context) => CupertinoActionSheet(
-        actions: [
-          Container(
-            padding: EdgeInsets.symmetric(vertical: 10),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-
-
-                _buildOptionButton(
-                  icon: note['isPinned'] ? CupertinoIcons.pin_slash : CupertinoIcons.pin,
-                  label: note['isPinned'] ? 'Unpin' : 'Pin',
-                  onTap: () async {
-                    Navigator.pop(context);
-                    await notesBox.put(
-                      note['key'],
-                      {
-                        ...notesBox.get(note['key']),
-                        'isPinned': !(note['isPinned'] ?? false),
-                      },
-                    );
-                    setState(() {});
-                  },
-                  color: CupertinoColors.activeBlue,
-                ),
-                _buildOptionButton(
-                  icon: CupertinoIcons.delete,
-                  label: 'Delete',
-                  onTap: () {
-                    Navigator.pop(context);
-                    _confirmDelete(context, note);
-                  },
-                  color: CupertinoColors.destructiveRed,
-                ),
-              ],
-            ),
-          ),
-        ],
-        cancelButton: CupertinoActionSheetAction(
-          onPressed: () {
-            Navigator.pop(context);
-          },
-          child: const Text('Cancel'),
-        ),
-      ),
-    );
+  void _toggleNoteSelection(dynamic noteKey) {
+    setState(() {
+      if (_selectedNoteKeys.contains(noteKey)) {
+        _selectedNoteKeys.remove(noteKey);
+        if (_selectedNoteKeys.isEmpty) {
+          _isSelectionMode = false;
+        }
+      } else {
+        _selectedNoteKeys.add(noteKey);
+      }
+    });
   }
 
+  void _togglePinSelectedNotes() async {
+    for (var key in _selectedNoteKeys) {
+      final note = notesBox.get(key);
+      await notesBox.put(
+        key,
+        {
+          ...note,
+          'isPinned': !(note['isPinned'] ?? false),
+        },
+      );
+    }
+    setState(() {
+      _selectedNoteKeys.clear();
+      _isSelectionMode = false;
+    });
+  }
 
-
-  void _confirmDelete(BuildContext context, Map<String, dynamic> note) {
+  void _deleteSelectedNotes() async {
     showCupertinoDialog(
       context: context,
       builder: (context) => CupertinoAlertDialog(
-        title: Text("Delete Note?"),
-        content: Text("Are you sure you want to delete this note? This action cannot be undone."),
+        title: Text("Delete ${_selectedNoteKeys.length} notes?"),
+        content: Text("Are you sure you want to delete these notes? This action cannot be undone."),
         actions: [
           CupertinoDialogAction(
             child: Text("Cancel"),
-            onPressed: () {
-              Navigator.pop(context);
-            },
+            onPressed: () => Navigator.pop(context),
           ),
           CupertinoDialogAction(
             isDestructiveAction: true,
             child: Text("Delete"),
             onPressed: () async {
               Navigator.pop(context);
-              await notesBox.delete(note['key']);
-              setState(() {});
+              for (var key in _selectedNoteKeys) {
+                await notesBox.delete(key);
+              }
+              setState(() {
+                _selectedNoteKeys.clear();
+                _isSelectionMode = false;
+              });
             },
           ),
         ],
@@ -171,29 +147,114 @@ class _NotesPageState extends State<NotesPage> {
     );
   }
 
+  void _openNoteEditor(BuildContext context, Map<String, dynamic> note) async {
+    final updatedNote = await Navigator.push(
+      context,
+      CupertinoPageRoute(
+        builder: (context) => NoteEditor(
+          initialTitle: note['title']?.toString() ?? '',
+          initialContent: note['content']?.toString() ?? '',
+          initialIsBold: note['isBold'] ?? false,
+          initialIsItalic: note['isItalic'] ?? false,
+          initialIsUnderline: note['isUnderline'] ?? false,
+          initialIsStrikethrough: note['isStrikethrough'] ?? false,
+          initialTextAlignment: note['textAlignment'] ?? 'left',
+          initialFontSize: note['fontSize'] ?? 16.0,
+        ),
+      ),
+    );
 
+    if (updatedNote != null && updatedNote['title'] != null) {
+      await notesBox.put(
+        note['key'],
+        {
+          'title': updatedNote['title'],
+          'content': updatedNote['content'],
+          'date': DateTime.now().toString(),
+          'isBold': updatedNote['isBold'],
+          'isItalic': updatedNote['isItalic'],
+          'isUnderline': updatedNote['isUnderline'],
+          'isStrikethrough': updatedNote['isStrikethrough'],
+          'textAlignment': updatedNote['textAlignment'],
+          'fontSize': updatedNote['fontSize'],
+          'isPinned': note['isPinned'] ?? false,
+        },
+      );
+      setState(() {});
+    }
+  }
 
-
-  Widget _buildOptionButton({
-    required IconData icon,
-    required String label,
-    required VoidCallback onTap,
-    Color color = CupertinoColors.black,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Column(
+  CupertinoNavigationBar _buildAppBar(BuildContext context) {
+    return CupertinoNavigationBar(
+      leading: _isSelectionMode
+          ? CupertinoButton(
+        padding: EdgeInsets.zero,
+        child: const Text('Cancel'),
+        onPressed: () {
+          setState(() {
+            _selectedNoteKeys.clear();
+            _isSelectionMode = false;
+          });
+        },
+      )
+          : null,
+      middle: _isSelectionMode
+          ? Text('${_selectedNoteKeys.length} Selected')
+          : const Text('Notes'),
+      trailing: _isSelectionMode
+          ? Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 30, color: color),
-          SizedBox(height: 5),
-          Text(label, style: TextStyle(fontSize: 14)),
+          CupertinoButton(
+            padding: EdgeInsets.zero,
+            child: const Icon(CupertinoIcons.pin),
+            onPressed: _togglePinSelectedNotes,
+          ),
+          CupertinoButton(
+            padding: EdgeInsets.zero,
+            child: const Icon(CupertinoIcons.delete),
+            onPressed: _deleteSelectedNotes,
+          ),
         ],
+      )
+          : CupertinoButton(
+        padding: EdgeInsets.zero,
+        child: const Icon(
+          CupertinoIcons.info_circle,
+          size: 23,
+          color: CupertinoColors.systemYellow,
+        ),
+        onPressed: () {
+          showCupertinoDialog(
+            context: context,
+            builder: (context) => CupertinoAlertDialog(
+              title: const Text('Team Members'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: const [
+                  SizedBox(height: 10),
+                  Text('Caparra, Christian'),
+                  Text('De Ramos, Michael'),
+                  Text('Galang, Jhuniel'),
+                  Text('Guevarra, John Lloyd'),
+                  Text('Miranda, Samuel'),
+                ],
+              ),
+              actions: [
+                CupertinoDialogAction(
+                  isDestructiveAction: true,
+                  child: const Text('Close'),
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                  },
+                ),
+              ],
+            ),
+          );
+        },
       ),
     );
   }
-
-
 
   @override
   Widget build(BuildContext context) {
@@ -224,61 +285,10 @@ class _NotesPageState extends State<NotesPage> {
     final groupedNotes = _groupNotes(filteredNotes);
 
     return CupertinoPageScaffold(
+      navigationBar: _buildAppBar(context),
       child: SafeArea(
         child: Column(
           children: [
-            Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'Notes',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 30,
-                      color: CupertinoColors.black,
-                    ),
-                  ),
-                  CupertinoButton(
-                    padding: EdgeInsets.zero,
-                    child: const Icon(
-                      CupertinoIcons.info_circle,
-                      size: 23,
-                      color: CupertinoColors.systemYellow,
-                    ),
-                    onPressed: () {
-                      showCupertinoDialog(
-                        context: context,
-                        builder: (context) => CupertinoAlertDialog(
-                          title: const Text('Team Members'),
-                          content: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: const [
-                              SizedBox(height: 10),
-                              Text('Caparra, Christian'),
-                              Text('De Ramos, Michael'),
-                              Text('Galang, Jhuniel'),
-                              Text('Guevarra, John Lloyd'),
-                              Text('Miranda, Samuel'),
-                            ],
-                          ),
-                          actions: [
-                            CupertinoDialogAction(
-                              isDestructiveAction: true,
-                              child: const Text('Close'),
-                              onPressed: () {
-                                Navigator.of(context).pop();
-                              },
-                            ),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
-                ],
-              ),
-            ),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16.0),
               child: CupertinoSearchTextField(
@@ -334,138 +344,137 @@ class _NotesPageState extends State<NotesPage> {
                         ),
                       ),
                       ...groupNotes.map((note) {
-                        final date = DateTime.parse(note['date'] ?? DateTime.now().toString());
-                        final formattedTime = DateFormat('h:mm a').format(date);
+                        final date = DateTime.parse(
+                            note['date'] ?? DateTime.now().toString());
+                        final formattedTime =
+                        DateFormat('h:mm a').format(date);
+                        final isSelected =
+                        _selectedNoteKeys.contains(note['key']);
 
-                        return Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 6),
-                          child: GestureDetector(
-                            onLongPress: () => _showNoteOptions(context, note),
-                            child: CupertinoButton(
-                              padding: EdgeInsets.zero,
-                              onPressed: () async {
-                                final updatedNote = await Navigator.push(
-                                  context,
-                                  CupertinoPageRoute(
-                                    builder: (context) => NoteEditor(
-                                      initialTitle: note['title']?.toString() ?? '',
-                                      initialContent: note['content']?.toString() ?? '',
-                                      initialIsBold: note['isBold'] ?? false,
-                                      initialIsItalic: note['isItalic'] ?? false,
-                                      initialIsUnderline: note['isUnderline'] ?? false,
-                                      initialIsStrikethrough: note['isStrikethrough'] ?? false,
-                                      initialTextAlignment: note['textAlignment'] ?? 'left',
-                                      initialFontSize: note['fontSize'] ?? 16.0,
-                                    ),
+                        return GestureDetector(
+                          onLongPress: () {
+                            setState(() {
+                              _isSelectionMode = true;
+                              _toggleNoteSelection(note['key']);
+                            });
+                          },
+                          onTap: () {
+                            if (_isSelectionMode) {
+                              setState(() {
+                                _toggleNoteSelection(note['key']);
+                              });
+                            } else {
+                              _openNoteEditor(context, note);
+                            }
+                          },
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 16.0, vertical: 6),
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: isSelected
+                                    ? CupertinoColors.systemBlue
+                                    .withOpacity(0.1)
+                                    : CupertinoColors.white,
+                                borderRadius: BorderRadius.circular(12),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: CupertinoColors.systemGrey
+                                        .withOpacity(0.1),
+                                    blurRadius: 4,
+                                    offset: const Offset(0, 2),
                                   ),
-                                );
-
-                                if (updatedNote != null && updatedNote['title'] != null) {
-                                  await notesBox.put(
-                                    note['key'],
-                                    {
-                                      'title': updatedNote['title'],
-                                      'content': updatedNote['content'],
-                                      'date': DateTime.now().toString(),
-                                      'isBold': updatedNote['isBold'],
-                                      'isItalic': updatedNote['isItalic'],
-                                      'isUnderline': updatedNote['isUnderline'],
-                                      'isStrikethrough': updatedNote['isStrikethrough'],
-                                      'textAlignment': updatedNote['textAlignment'],
-                                      'fontSize': updatedNote['fontSize'],
-                                      'isPinned': note['isPinned'] ?? false,
-                                    },
-                                  );
-                                  setState(() {});
-                                }
-                              },
-                              child: Container(
-                                width: double.infinity,
-                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                                decoration: BoxDecoration(
-                                  color: CupertinoColors.white,
-                                  borderRadius: BorderRadius.circular(12),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: CupertinoColors.systemGrey.withOpacity(0.1),
-                                      blurRadius: 4,
-                                      offset: const Offset(0, 2),
-                                    ),
-                                  ],
-                                  border: groupKey == 'Pinned'
-                                      ? Border.all(
-                                    color: CupertinoColors.systemOrange.withOpacity(0.3),
-                                    width: 1.5,
-                                  )
-                                      : null,
-                                ),
-                                child: IntrinsicHeight(
-                                  child: Row(
-                                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                                    children: [
-                                      if (note['isPinned'])
-                                        Container(
-                                          width: 24,
-                                          alignment: Alignment.centerLeft,
-                                          child: const Icon(
-                                            CupertinoIcons.pin_fill,
-                                            size: 20,
-                                            color: CupertinoColors.systemOrange,
-                                          ),
-                                        ),
-                                      Expanded(
-                                        child: Padding(
-                                          padding: const EdgeInsets.only(left: 10),
-                                          child: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            mainAxisAlignment: MainAxisAlignment.center,
-                                            children: [
-                                              Row(
-                                                children: [
-                                                  Expanded(
-                                                    child: Text(
-                                                      note['title']?.toString() ?? 'No title',
-                                                      style: const TextStyle(
-                                                        fontWeight: FontWeight.w600,
-                                                        fontSize: 16,
-                                                        color: CupertinoColors.black,
-                                                      ),
-                                                    ),
-                                                  ),
-                                                  Text(
-                                                    formattedTime,
-                                                    style: const TextStyle(
-                                                      fontSize: 13,
-                                                      color: CupertinoColors.systemGrey,
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                              const SizedBox(height: 4),
-                                              Text(
-                                                _getPlainTextPreview(note['content'].toString()),
-                                                maxLines: 2,
-                                                overflow: TextOverflow.ellipsis,
-                                                style: const TextStyle(
-                                                  fontSize: 14,
-                                                  color: CupertinoColors.systemGrey,
-                                                ),
-                                              ),
-                                              const SizedBox(height: 4),
-                                              const Text(
-                                                'Notes',
-                                                style: TextStyle(
-                                                  fontSize: 12,
-                                                  color: CupertinoColors.systemGrey2,
-                                                  fontStyle: FontStyle.italic,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
+                                ],
+                                border: groupKey == 'Pinned'
+                                    ? Border.all(
+                                  color: CupertinoColors.systemOrange
+                                      .withOpacity(0.3),
+                                  width: 1.5,
+                                )
+                                    : null,
+                              ),
+                              child: IntrinsicHeight(
+                                child: Row(
+                                  crossAxisAlignment:
+                                  CrossAxisAlignment.stretch,
+                                  children: [
+                                    if (isSelected)
+                                      Container(
+                                        width: 40,
+                                        alignment: Alignment.center,
+                                        child: Icon(
+                                          CupertinoIcons.checkmark_alt,
+                                          color:
+                                          CupertinoColors.systemBlue,
                                         ),
                                       ),
-                                    ],
-                                  ),
+                                    if (note['isPinned'] && !isSelected)
+                                      Container(
+                                        width: 24,
+                                        alignment: Alignment.centerLeft,
+                                        child: const Icon(
+                                          CupertinoIcons.pin_fill,
+                                          size: 20,
+                                          color:
+                                          CupertinoColors.systemOrange,
+                                        ),
+                                      ),
+                                    Expanded(
+                                      child: Padding(
+                                        padding:
+                                        const EdgeInsets.only(left: 10),
+                                        child: Column(
+                                          crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                          mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                          children: [
+                                            Row(
+                                              children: [
+                                                Expanded(
+                                                  child: Text(
+                                                    note['title']
+                                                        ?.toString() ??
+                                                        'No title',
+                                                    style: const TextStyle(
+                                                      fontWeight:
+                                                      FontWeight.w600,
+                                                      fontSize: 16,
+                                                      color:
+                                                      CupertinoColors
+                                                          .black,
+                                                    ),
+                                                  ),
+                                                ),
+                                                Text(
+                                                  formattedTime,
+                                                  style: const TextStyle(
+                                                    fontSize: 13,
+                                                    color: CupertinoColors
+                                                        .systemGrey,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              _getPlainTextPreview(note[
+                                              'content']
+                                                  ?.toString()),
+                                              maxLines: 2,
+                                              overflow:
+                                              TextOverflow.ellipsis,
+                                              style: const TextStyle(
+                                                fontSize: 14,
+                                                color: CupertinoColors
+                                                    .systemGrey,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
                             ),
@@ -576,7 +585,6 @@ class _NoteEditorState extends State<NoteEditor> {
   bool isFontSizePickerVisible = false;
   bool isAlignmentPickerVisible = false;
 
-  // Formatting states
   bool isBold = false;
   bool isItalic = false;
   bool isUnderline = false;
@@ -584,7 +592,6 @@ class _NoteEditorState extends State<NoteEditor> {
   String textAlignment = 'left';
   double fontSize = 16.0;
 
-  // Available font sizes
   final List<double> fontSizes = [12.0, 14.0, 16.0, 18.0, 20.0, 24.0, 28.0, 32.0];
 
   @override
@@ -607,8 +614,6 @@ class _NoteEditorState extends State<NoteEditor> {
     super.dispose();
   }
 
-
-
   void _toggleFormatting(String format) {
     setState(() {
       switch (format) {
@@ -629,14 +634,11 @@ class _NoteEditorState extends State<NoteEditor> {
 
     final selection = contentController.selection;
     if (selection.start == selection.end) {
-
       return;
     }
 
-
     final text = contentController.text;
     final selectedText = text.substring(selection.start, selection.end);
-
 
     final updatedText = text.replaceRange(
       selection.start,
@@ -672,7 +674,6 @@ class _NoteEditorState extends State<NoteEditor> {
     final selection = controller.selection;
     final text = controller.text;
 
-
     final lineStart = text.lastIndexOf('\n', selection.start - 1) + 1;
     final lineEnd = text.indexOf('\n', selection.start);
     final currentLine = lineEnd == -1
@@ -680,14 +681,12 @@ class _NoteEditorState extends State<NoteEditor> {
         : text.substring(lineStart, lineEnd);
 
     if (currentLine.startsWith('• ')) {
-
       final newText = text.replaceRange(lineStart, lineStart + 2, '');
       controller.value = TextEditingValue(
         text: newText,
         selection: TextSelection.collapsed(offset: selection.start - 2),
       );
     } else {
-
       final newText = text.replaceRange(lineStart, lineStart, '• ');
       controller.value = TextEditingValue(
         text: newText,
@@ -777,7 +776,6 @@ class _NoteEditorState extends State<NoteEditor> {
                 'textAlignment': textAlignment,
                 'fontSize': fontSize,
                 'isPinned': false,
-
               });
             } else {
               Navigator.pop(context);
@@ -797,7 +795,8 @@ class _NoteEditorState extends State<NoteEditor> {
                     CupertinoTextField(
                       controller: titleController,
                       placeholder: 'Title',
-                      placeholderStyle: const TextStyle(color: CupertinoColors.placeholderText),
+                      placeholderStyle:
+                      const TextStyle(color: CupertinoColors.placeholderText),
                       padding: const EdgeInsets.symmetric(vertical: 12),
                       style: TextStyle(
                         fontSize: 30,
@@ -811,7 +810,8 @@ class _NoteEditorState extends State<NoteEditor> {
                     CupertinoTextField(
                       controller: contentController,
                       placeholder: 'Note something down',
-                      placeholderStyle: const TextStyle(color: CupertinoColors.placeholderText),
+                      placeholderStyle:
+                      const TextStyle(color: CupertinoColors.placeholderText),
                       maxLines: null,
                       textAlign: _getTextAlign(),
                       textAlignVertical: TextAlignVertical.top,
@@ -823,7 +823,6 @@ class _NoteEditorState extends State<NoteEditor> {
                 ),
               ),
             ),
-            // Main Toolbar
             if (!isFormattingToolbarVisible &&
                 !isFontSizePickerVisible &&
                 !isAlignmentPickerVisible)
@@ -837,7 +836,8 @@ class _NoteEditorState extends State<NoteEditor> {
                   children: [
                     CupertinoButton(
                       padding: EdgeInsets.zero,
-                      child: const Icon(CupertinoIcons.textformat, color: CupertinoColors.black),
+                      child: const Icon(CupertinoIcons.textformat,
+                          color: CupertinoColors.black),
                       onPressed: () {
                         setState(() {
                           isFormattingToolbarVisible = true;
@@ -847,14 +847,14 @@ class _NoteEditorState extends State<NoteEditor> {
                     const SizedBox(width: 20),
                     CupertinoButton(
                       padding: EdgeInsets.zero,
-                      child: const Icon(CupertinoIcons.list_bullet, color: CupertinoColors.black),
+                      child: const Icon(CupertinoIcons.list_bullet,
+                          color: CupertinoColors.black),
                       onPressed: _toggleBulletList,
                     ),
                     const Spacer(),
                   ],
                 ),
               ),
-
             if (isFormattingToolbarVisible)
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
@@ -867,32 +867,36 @@ class _NoteEditorState extends State<NoteEditor> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceAround,
                       children: [
-                        // Bold
                         CupertinoButton(
                           padding: EdgeInsets.zero,
                           child: Icon(CupertinoIcons.bold,
-                              color: isBold ? CupertinoColors.systemBlue : CupertinoColors.black),
+                              color: isBold
+                                  ? CupertinoColors.systemBlue
+                                  : CupertinoColors.black),
                           onPressed: () => _toggleFormatting('bold'),
                         ),
-                        // Italic
                         CupertinoButton(
                           padding: EdgeInsets.zero,
                           child: Icon(CupertinoIcons.italic,
-                              color: isItalic ? CupertinoColors.systemBlue : CupertinoColors.black),
+                              color: isItalic
+                                  ? CupertinoColors.systemBlue
+                                  : CupertinoColors.black),
                           onPressed: () => _toggleFormatting('italic'),
                         ),
-                        // Underline
                         CupertinoButton(
                           padding: EdgeInsets.zero,
                           child: Icon(CupertinoIcons.underline,
-                              color: isUnderline ? CupertinoColors.systemBlue : CupertinoColors.black),
+                              color: isUnderline
+                                  ? CupertinoColors.systemBlue
+                                  : CupertinoColors.black),
                           onPressed: () => _toggleFormatting('underline'),
                         ),
-                        // Strikethrough
                         CupertinoButton(
                           padding: EdgeInsets.zero,
                           child: Icon(Icons.strikethrough_s,
-                              color: isStrikethrough ? CupertinoColors.systemBlue : CupertinoColors.black),
+                              color: isStrikethrough
+                                  ? CupertinoColors.systemBlue
+                                  : CupertinoColors.black),
                           onPressed: () => _toggleFormatting('strikethrough'),
                         ),
                       ],
@@ -901,10 +905,10 @@ class _NoteEditorState extends State<NoteEditor> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceAround,
                       children: [
-                        // Font Size
                         CupertinoButton(
                           padding: EdgeInsets.zero,
-                          child: const Icon(Icons.text_fields, color: CupertinoColors.black),
+                          child: const Icon(Icons.text_fields,
+                              color: CupertinoColors.black),
                           onPressed: () {
                             setState(() {
                               isFormattingToolbarVisible = false;
@@ -912,10 +916,10 @@ class _NoteEditorState extends State<NoteEditor> {
                             });
                           },
                         ),
-                        // Text Alignment
                         CupertinoButton(
                           padding: EdgeInsets.zero,
-                          child: const Icon(Icons.format_align_left, color: CupertinoColors.black),
+                          child: const Icon(Icons.format_align_left,
+                              color: CupertinoColors.black),
                           onPressed: () {
                             setState(() {
                               isFormattingToolbarVisible = false;
@@ -923,10 +927,10 @@ class _NoteEditorState extends State<NoteEditor> {
                             });
                           },
                         ),
-                        // Close
                         CupertinoButton(
                           padding: EdgeInsets.zero,
-                          child: const Icon(CupertinoIcons.clear, color: CupertinoColors.black),
+                          child: const Icon(CupertinoIcons.clear,
+                              color: CupertinoColors.black),
                           onPressed: () {
                             setState(() {
                               isFormattingToolbarVisible = false;
@@ -938,7 +942,6 @@ class _NoteEditorState extends State<NoteEditor> {
                   ],
                 ),
               ),
-            // Font Size Picker
             if (isFontSizePickerVisible)
               Container(
                 height: 60,
@@ -986,7 +989,6 @@ class _NoteEditorState extends State<NoteEditor> {
                   }).toList(),
                 ),
               ),
-            // Alignment Picker
             if (isAlignmentPickerVisible)
               Container(
                 height: 60,
