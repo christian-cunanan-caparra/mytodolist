@@ -1,649 +1,1405 @@
-
+import 'package:bsitdolist/settings.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
-import 'package:hive_flutter/hive_flutter.dart';
-// import 'package:intl/intl.dart';
-
-import 'notes.dart';
+import 'package:hive_flutter/adapters.dart';
+import 'package:intl/intl.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Hive.initFlutter();
-  await Hive.openBox('taskBox'); // Consistent box name
-  await Hive.openBox('notesBox'); // For notes
-  runApp(const CupertinoApp(
-    debugShowCheckedModeBanner: false,
-    home: MyApp(),
-  ));
+  await Hive.openBox('notesBox');
+  await Hive.openBox('trashBox'); // Add this line
+  runApp(const MyApp());
 }
 
-class MyApp extends StatefulWidget {
+class MyApp extends StatelessWidget {
   const MyApp({super.key});
+
   @override
-  State<MyApp> createState() => _MyAppState();
+  Widget build(BuildContext context) {
+    return const CupertinoApp(
+      debugShowCheckedModeBanner: false,
+      title: 'iNote',
+      theme: CupertinoThemeData(
+        brightness: Brightness.light,
+        primaryColor: CupertinoColors.systemOrange,
+      ),
+      home: NotesPage(),
+    );
+  }
 }
 
-class _MyAppState extends State<MyApp> {
-  List<Map<String, dynamic>> todolist = [];
-  final TextEditingController _addTask = TextEditingController();
-  final TextEditingController _editTask = TextEditingController();
-  final box = Hive.box('taskBox'); // Consistent box name
-  List<int> selectedIndices = [];
+class NotesPage extends StatefulWidget {
+  const NotesPage({super.key});
+
+  @override
+  State<NotesPage> createState() => _NotesPageState();
+}
+
+class _SwipeActionButton extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final String label;
+
+  const _SwipeActionButton({
+    required this.icon,
+    required this.color,
+    required this.label,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, color: CupertinoColors.white),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 12,
+              color: CupertinoColors.white,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _NotesPageState extends State<NotesPage> {
   String _searchQuery = '';
-  bool _isLoading = true; // Added loading state
+  late Box notesBox;
+  final Set<dynamic> _selectedNotes = {};
+  bool _isSelecting = false;
 
   @override
   void initState() {
     super.initState();
-    _loadTasks();
+    notesBox = Hive.box('notesBox');
+    // Add listener for real-time updates
+    notesBox.listenable().addListener(_onBoxChanged);
   }
 
-  Future<void> _loadTasks() async {
-    setState(() => _isLoading = true);
-
-    final data = box.get('todo', defaultValue: []); // Consistent key name
-
-    todolist = (data as List)
-        .map((e) => Map<String, dynamic>.from(e))
-        .map((task) {
-      task.putIfAbsent('date', () => DateTime.now().toIso8601String());
-      return task;
-    })
-        .toList()
-        .reversed
-        .toList();
-
-    setState(() => _isLoading = false);
+  @override
+  void dispose() {
+    // Remove listener when widget is disposed
+    notesBox.listenable().removeListener(_onBoxChanged);
+    super.dispose();
   }
 
-  void _saveTask(String taskText) {
-    final task = {
-      "task": taskText,
-      "status": false,
-      "date": DateTime.now().toIso8601String(),
-    };
+  void _onBoxChanged() {
+    // This will trigger a rebuild when the box changes
+    if (mounted) {
+      setState(() {});
+    }
+  }
 
+  bool _areSelectedNotesPinned() {
+    for (var key in _selectedNotes) {
+      final note = notesBox.get(key);
+      if (note['isPinned'] != true) {
+        return false;
+      }
+    }
+    return _selectedNotes.isNotEmpty;
+  }
+
+  String _getDateGroup(DateTime date) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final yesterday = DateTime(now.year, now.month, now.day - 1);
+    final weekAgo = DateTime(now.year, now.month, now.day - 7);
+    final monthAgo = DateTime(now.year, now.month - 1, now.day);
+
+    final noteDate = DateTime(date.year, date.month, date.day);
+
+    if (noteDate == today) return 'Today';
+    if (noteDate == yesterday) return 'Yesterday';
+    if (noteDate.isAfter(weekAgo)) return 'Previous 7 Days';
+    if (noteDate.isAfter(monthAgo)) return 'Previous 30 Days';
+    return 'Older';
+  }
+
+  Map<String, List<Map<String, dynamic>>> _groupNotes(List<Map<String, dynamic>> notes) {
+    final pinnedNotes = notes.where((note) => note['isPinned'] == true).toList();
+    final unpinnedNotes = notes.where((note) => note['isPinned'] != true).toList();
+
+    unpinnedNotes.sort((a, b) {
+      final dateA = DateTime.parse(a['date'] ?? '1970-01-01');
+      final dateB = DateTime.parse(b['date'] ?? '1970-01-01');
+      return dateB.compareTo(dateA);
+    });
+
+    final groups = <String, List<Map<String, dynamic>>>{};
+
+    if (pinnedNotes.isNotEmpty) {
+      groups['Pinned'] = pinnedNotes;
+    }
+
+    for (final note in unpinnedNotes) {
+      final date = DateTime.parse(note['date'] ?? DateTime.now().toString());
+      final group = _getDateGroup(date);
+
+      if (!groups.containsKey(group)) {
+        groups[group] = [];
+      }
+      groups[group]!.add(note);
+    }
+
+    return groups;
+  }
+
+  String _getPlainTextPreview(String? content) {
+    if (content == null) return '';
+
+    return content
+        .replaceAll('[style bold="true"]', '')
+        .replaceAll('[style italic="true"]', '')
+        .replaceAll('[style underline="true"]', '')
+        .replaceAll('[style strikethrough="true"]', '')
+        .replaceAll('[/style]', '');
+  }
+
+  void _toggleSelectionMode() {
     setState(() {
-      todolist.insert(0, task);
-      _saveToDatabase();
+      _isSelecting = !_isSelecting;
+      if (!_isSelecting) {
+        _selectedNotes.clear();
+      }
     });
   }
 
-  void _saveToDatabase() {
-    box.put('todo', List<Map<String, dynamic>>.from(todolist.reversed));
+  void _toggleNoteSelection(dynamic noteKey) {
+    setState(() {
+      if (_selectedNotes.contains(noteKey)) {
+        _selectedNotes.remove(noteKey);
+        if (_selectedNotes.isEmpty) {
+          _isSelecting = false;
+        }
+      } else {
+        _selectedNotes.add(noteKey);
+        if (!_isSelecting) {
+          _isSelecting = true;
+        }
+      }
+    });
   }
 
+  Future<void> _togglePinnedStatus() async {
+    for (var key in _selectedNotes) {
+      final note = notesBox.get(key);
+      await notesBox.put(key, {
+        ...note,
+        'isPinned': !(note['isPinned'] ?? false),
+      });
+    }
+    setState(() {
+      _selectedNotes.clear();
+      _isSelecting = false;
+    });
+  }
 
+  Future<void> _deleteSelectedNotes() async {
+    final trashBox = Hive.box('trashBox');
 
-  Widget _buildTaskItem(Map<String, dynamic> task, int index) {
-    final isSelected = selectedIndices.contains(index);
-    final status = task['status'] ? 'Completed' : 'Pending';
-    final statusColor = task['status']
-        ? CupertinoColors.systemGreen
-        : CupertinoColors.systemOrange;
+    // Move notes to trash with deletion date
+    for (var key in _selectedNotes) {
+      final note = notesBox.get(key);
+      await trashBox.put(key, {
+        ...note,
+        'dateDeleted': DateTime.now().toString(),
+      });
+    }
 
-    return GestureDetector(
-      onTap: () {
-        if (selectedIndices.isNotEmpty) {
-          setState(() {
-            if (isSelected) {
-              selectedIndices.remove(index);
-            } else {
-              selectedIndices.add(index);
-            }
-          });
-        } else {
-          // Only allow editing if the task is not completed
-          if (todolist[index]['status'] == false) {
-            _showEditDialog(index, task['task']);
-          } else {
-            showCupertinoDialog(
-              context: context,
-              builder: (context) => CupertinoAlertDialog(
-                title: const Text('Editing Not Allowed'),
-                content: const Text('This task is already marked as completed.'),
-                actions: [
-                  CupertinoDialogAction(
-                    isDestructiveAction: true,
-                    child: const Text('OK'),
-                    onPressed: () => Navigator.pop(context),
-                  ),
-                ],
-              ),
-            );
-          }
-        }
-      },
-      onLongPress: () {
-        setState(() {
-          if (isSelected) {
-            selectedIndices.remove(index);
-          } else {
-            selectedIndices.add(index);
-          }
-        });
-      },
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8),
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: isSelected
-                ? CupertinoColors.systemGrey5 // Gray background when selected
-                : CupertinoColors.white, // White background when not selected
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: [
-              BoxShadow(
-                color: CupertinoColors.black.withOpacity(0.05),
-                blurRadius: 8,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (selectedIndices.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(right: 12),
-                  child: Icon(
-                    isSelected
-                        ? CupertinoIcons.check_mark_circled_solid
-                        : CupertinoIcons.circle,
-                    color: isSelected
-                        ? CupertinoColors.activeBlue
-                        : CupertinoColors.inactiveGray,
-                  ),
-                ),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+    // Delete from main notes
+    await notesBox.deleteAll(_selectedNotes);
+
+    setState(() {
+      _selectedNotes.clear();
+      _isSelecting = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final List<Map<String, dynamic>> notesList = notesBox.keys.map((key) {
+      final note = notesBox.get(key);
+      return {
+        'key': key,
+        'title': note['title'],
+        'content': note['content'],
+        'date': note['date'],
+        'isBold': note['isBold'] ?? false,
+        'isItalic': note['isItalic'] ?? false,
+        'isUnderline': note['isUnderline'] ?? false,
+        'isStrikethrough': note['isStrikethrough'] ?? false,
+        'textAlignment': note['textAlignment'] ?? 'left',
+        'fontSize': note['fontSize'] ?? 16.0,
+        'isPinned': note['isPinned'] ?? false,
+      };
+    }).toList();
+
+    final filteredNotes = notesList.where((note) {
+      final title = note['title']?.toString().toLowerCase() ?? '';
+      final content = _getPlainTextPreview(note['content']?.toString()).toLowerCase();
+      return title.contains(_searchQuery.toLowerCase()) ||
+          content.contains(_searchQuery.toLowerCase());
+    }).toList();
+
+    final groupedNotes = _groupNotes(filteredNotes);
+
+    return CupertinoPageScaffold(
+      child: SafeArea(
+        child: Column(
+          children: [
+            if (_isSelecting)
+              Container(
+                padding: const EdgeInsets.all(16),
+                color: CupertinoColors.white,
+                child: Row(
                   children: [
                     Text(
-                      task['task'],
-                      style: TextStyle(
+                      '${_selectedNotes.length} Selected',
+                      style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
-                        decoration: task['status']
-                            ? TextDecoration.lineThrough
-                            : null,
                       ),
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      task['note'] ?? '',
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        color: CupertinoColors.black,
+                    const Spacer(),
+                    CupertinoButton(
+                      padding: EdgeInsets.zero,
+                      onPressed: _toggleSelectionMode,
+                      child: const Text(
+                        'Cancel',
+                        style: TextStyle(
+                          color: CupertinoColors.destructiveRed,
+                        ),
                       ),
                     ),
                   ],
                 ),
-              ),
-              if (selectedIndices.isEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(left: 8),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: statusColor.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      status,
+              )
+            else
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'iNotes',
                       style: TextStyle(
-                        color: statusColor,
                         fontWeight: FontWeight.bold,
-                        fontSize: 12,
+                        fontSize: 37.5,
+                        color: CupertinoColors.black,
                       ),
                     ),
-                  ),
+                    CupertinoButton(
+                      padding: EdgeInsets.zero,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(color: CupertinoColors.systemOrange, width: 2),
+                        ),
+                        padding: const EdgeInsets.all(8),
+                        child: Icon(
+                          Icons.more_horiz,
+                          color: CupertinoColors.systemOrange,
+                          size: 10,
+                        ),
+                      ),
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          CupertinoPageRoute(builder: (context) => const SettingsPage()),
+                        );
+                      },
+                    )
+
+                  ],
                 ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSection(String title, List<Map<String, dynamic>> items) {
-    if (items.isEmpty) return const SizedBox();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: Text(
-            title,
-            style: const TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ),
-        ...items.map((task) {
-          final index = todolist.indexOf(task);
-          return _buildTaskItem(task, index);
-        }).toList(),
-      ],
-    );
-  }
-
-  void _showEditDialog(int index, String currentText) {
-    _editTask.text = currentText;
-    showCupertinoDialog(
-      context: context,
-      builder: (context) {
-        return CupertinoAlertDialog(
-          title: const Text('Edit Task'),
-          content: Column(
-            children: [
-              const SizedBox(height: 12),
-              CupertinoTextField(
-                controller: _editTask,
-                placeholder: 'Task name',
               ),
-            ],
-          ),
-          actions: [
-            CupertinoDialogAction(
-              isDestructiveAction: true,
-              child: const Text('Cancel'),
-              onPressed: () {
-                _editTask.clear();
-                Navigator.pop(context);
-              },
-            ),
-            CupertinoDialogAction(
-              child: const Text('Update'),
-              onPressed: () {
-                if (_editTask.text.trim().isNotEmpty) {
-                  final updatedTask = {
-                    ...todolist[index],
-                    "task": _editTask.text.trim(),
-                    "date": DateTime.now().toIso8601String(),
-                  };
-
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0),
+              child: CupertinoSearchTextField(
+                onChanged: (value) {
                   setState(() {
-                    todolist.removeAt(index);
-                    todolist.insert(0, updatedTask); // Put updated pending at top
-                    _saveToDatabase();
+                    _searchQuery = value;
                   });
-                }
-                _editTask.clear();
-                Navigator.pop(context);
-              },
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-
-  void _showDeleteConfirmation() {
-    showCupertinoDialog(
-      context: context,
-      builder: (context) {
-        return CupertinoAlertDialog(
-          title: const Text('Delete Selected'),
-          content: Text('Remove ${selectedIndices.length} item(s)?'),
-          actions: [
-            CupertinoDialogAction(
-              child: const Text('Cancel'),
-              onPressed: () => Navigator.pop(context),
-            ),
-            CupertinoDialogAction(
-              isDestructiveAction: true,
-              child: const Text('Delete'),
-              onPressed: () {
-                setState(() {
-                  selectedIndices.sort((a, b) => b.compareTo(a));
-                  for (var index in selectedIndices) {
-                    todolist.removeAt(index);
-                  }
-                  selectedIndices.clear();
-                  _saveToDatabase();
-                });
-                Navigator.pop(context);
-              },
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  void _markSelectedAsCompleted() {
-    final alreadyCompleted = selectedIndices.every((index) => todolist[index]['status'] == true);
-
-    if (alreadyCompleted) {
-      showCupertinoDialog(
-        context: context,
-        builder: (context) {
-          return CupertinoAlertDialog(
-            title: const Text('Tasks already completed'),
-            actions: [
-              CupertinoDialogAction(
-                isDestructiveAction: true,
-                child: const Text('Ok'),
-                onPressed: () {
-                  Navigator.pop(context);
                 },
               ),
-            ],
-          );
-        },
-      );
-      return;
-    }
-
-    showCupertinoDialog(
-      context: context,
-      builder: (context) {
-        return CupertinoAlertDialog(
-          title: const Text('Mark as Completed'),
-          content: Text('Mark ${selectedIndices.length} item(s) as completed?'),
-          actions: [
-            CupertinoDialogAction(
-              isDestructiveAction: true,
-              child: const Text('Cancel'),
-              onPressed: () => Navigator.pop(context),
             ),
-            CupertinoDialogAction(
-              child: const Text('Confirm'),
-              onPressed: () {
-                setState(() {
-                  for (var index in selectedIndices) {
-                    todolist[index]['status'] = true;
-                    todolist[index]['date'] = DateTime.now().toIso8601String();
-                  }
-                  selectedIndices.clear();
-                  _saveToDatabase();
-                });
-                Navigator.pop(context);
-              },
-            ),
-          ],
-        );
-      },
-    );
-  }
+            const SizedBox(height: 12),
+            Expanded(
+              child: filteredNotes.isEmpty
+                  ? const Center(
+                child: Text(
+                  'No notes yet!',
+                  style: TextStyle(color: CupertinoColors.black),
+                ),
+              )
+                  : ListView.builder(
+                itemCount: groupedNotes.length,
+                itemBuilder: (context, index) {
+                  final groupKey = groupedNotes.keys.elementAt(index);
+                  final groupNotes = groupedNotes[groupKey]!;
 
-
-  List<Map<String, dynamic>> _getPendingTasks() {
-    return todolist.where((task) =>
-    task['status'] == false &&
-        task['task'].toString().toLowerCase().contains(_searchQuery)
-    ).toList();
-  }
-
-  List<Map<String, dynamic>> _getCompletedTasks() {
-    return todolist.where((task) =>
-    task['status'] == true &&
-        task['task'].toString().toLowerCase().contains(_searchQuery)
-    ).toList();
-  }
-
-
-  @override
-  Widget build(BuildContext context) {
-    final notCompleted = _getPendingTasks();
-    final completed = _getCompletedTasks();
-
-    return CupertinoPageScaffold(
-      child: SafeArea(
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            return _isLoading
-                ? const Center(child: CupertinoActivityIndicator())
-                : SingleChildScrollView(
-              padding: EdgeInsets.only(
-                bottom: MediaQuery.of(context).viewInsets.bottom,
-              ),
-              child: ConstrainedBox(
-                constraints: BoxConstraints(minHeight: constraints.maxHeight),
-                child: IntrinsicHeight(
-                  child: Column(
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Padding(
-                        padding: const EdgeInsets.all(20.8),
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: selectedIndices.isNotEmpty
-                                ? CupertinoColors.systemGrey5
-                                : CupertinoColors.systemBackground,
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              selectedIndices.isEmpty
-                                  ? Row(
-                                children: [
-                                  const Text(
-                                    'Todo List',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 30,
-                                    ),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16.0, vertical: 8),
+                        child: Row(
+                          children: [
+                            if (groupKey == 'Pinned')
+                              const Icon(
+                                CupertinoIcons.pin_fill,
+                                size: 16,
+                                color: CupertinoColors.systemOrange,
+                              ),
+                            if (groupKey == 'Pinned') const SizedBox(width: 6),
+                            Text(
+                              groupKey,
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                                color: groupKey == 'Pinned'
+                                    ? CupertinoColors.systemOrange
+                                    : CupertinoColors.black,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      ...groupNotes.map((note) {
+                        final date = DateTime.parse(
+                            note['date'] ?? DateTime.now().toString());
+                        final now = DateTime.now();
+                        final today = DateTime(now.year, now.month, now.day);
+                        final noteDate =
+                        DateTime(date.year, date.month, date.day);
+
+                        final formattedTime = noteDate == today
+                            ? DateFormat('h:mm a').format(date)
+                            : DateFormat('M/d/yy').format(date);
+
+                        return Dismissible(
+                          key: Key(note['key'].toString()),
+                          direction: DismissDirection.endToStart, // Only allow right-to-left swipe
+                          confirmDismiss: (direction) async {
+                            // Delete action confirmation
+                            final shouldDelete = await showCupertinoDialog(
+                              context: context,
+                              builder: (context) => CupertinoAlertDialog(
+                                title: const Text('Delete Note'),
+                                content: const Text(
+                                    'Are you sure you want to delete this note?'),
+                                actions: [
+                                  CupertinoDialogAction(
+                                    child: const Text('Cancel'),
+                                    onPressed: () =>
+                                        Navigator.of(context).pop(false),
                                   ),
-                                  const SizedBox(width: 8),
-                                  CupertinoButton(
-                                    padding: EdgeInsets.zero,
-                                    onPressed: () {
-                                      Navigator.of(context).push(
-                                        CupertinoPageRoute(
-                                          builder: (context) => NotesPage(),
-                                        ),
-                                      );
-                                    },
-                                    child: const Icon(
-                                      CupertinoIcons.line_horizontal_3,
-                                      size: 26,
-                                      color: CupertinoColors.systemYellow,
-                                    ),
+                                  CupertinoDialogAction(
+                                    isDestructiveAction: true,
+                                    child: const Text('Delete'),
+                                    onPressed: () =>
+                                        Navigator.of(context).pop(true),
                                   ),
                                 ],
-                              )
-                                  : Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                child: Text(
-                                  '${selectedIndices.length} Selected',
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 25,
-                                  ),
+                              ),
+                            );
+                            return shouldDelete;
+                          },
+                          onDismissed: (direction) async {
+                            final trashBox = Hive.box('trashBox');
+                            final noteKey = note['key'];
+                            final currentNote = notesBox.get(noteKey);
+                            await trashBox.put(noteKey, {
+                              ...currentNote,
+                              'dateDeleted': DateTime.now().toString(),
+                            });
+                            await notesBox.delete(noteKey);
+                          },
+                          background: Container(), // Empty background for left swipe
+                          secondaryBackground: Container(
+                            margin: const EdgeInsets.symmetric(
+                                horizontal: 16, vertical: 6),
+                            child: Row(
+                              children: [
+                                const Spacer(),
+                                _SwipeActionButton(
+                                  icon: CupertinoIcons.delete,
+                                  color: CupertinoColors.destructiveRed,
+                                  label: 'Delete',
+                                ),
+                              ],
+                            ),
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 16.0, vertical: 6),
+                            child: GestureDetector(
+                              onLongPress: () {
+                                _toggleSelectionMode();
+                                _toggleNoteSelection(note['key']);
+                              },
+                              onTap: () {
+                                if (_isSelecting) {
+                                  _toggleNoteSelection(note['key']);
+                                } else {
+                                  _openNoteEditor(context, note);
+                                }
+                              },
+                              child: Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 16, vertical: 12),
+                                decoration: BoxDecoration(
+                                  color: _selectedNotes.contains(note['key'])
+                                      ? CupertinoColors.white
+                                      : CupertinoColors.white,
+                                  borderRadius: BorderRadius.circular(12),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: CupertinoColors.systemGrey
+                                          .withOpacity(0.1),
+                                      blurRadius: 4,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ],
+                                  border: groupKey == 'Pinned'
+                                      ? Border.all(
+                                    color: CupertinoColors.white
+                                        .withOpacity(0.3),
+                                    width: 1.5,
+                                  )
+                                      : null,
+                                ),
+                                child: Row(
+                                  crossAxisAlignment:
+                                  CrossAxisAlignment.start,
+                                  children: [
+                                    if (note['isPinned'] && !_isSelecting)
+                                      Container(
+                                        margin: const EdgeInsets.only(
+                                            right: 12, top: 6),
+                                        width: 48,
+                                        height: 48,
+                                        decoration: BoxDecoration(
+                                          color: CupertinoColors.systemOrange,
+                                          borderRadius:
+                                          BorderRadius.circular(12),
+                                        ),
+                                        child: const Center(
+                                          child: Icon(
+                                            CupertinoIcons.pin_fill,
+                                            size: 20,
+                                            color: CupertinoColors.white,
+                                          ),
+                                        ),
+                                      ),
+                                    if (_isSelecting)
+                                      Padding(
+                                        padding: const EdgeInsets.only(
+                                            right: 12),
+                                        child: Icon(
+                                          _selectedNotes.contains(note['key'])
+                                              ? CupertinoIcons
+                                              .checkmark_circle_fill
+                                              : CupertinoIcons.circle,
+                                          color: _selectedNotes
+                                              .contains(note['key'])
+                                              ? CupertinoColors.systemOrange
+                                              : CupertinoColors.systemGrey,
+                                        ),
+                                      ),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                        children: [
+                                          Row(
+                                            children: [
+                                              Expanded(
+                                                child: Text(
+                                                  note['title']?.toString() ??
+                                                      'No title',
+                                                  style: const TextStyle(
+                                                    fontWeight:
+                                                    FontWeight.w600,
+                                                    fontSize: 16,
+                                                    color:
+                                                    CupertinoColors.black,
+                                                  ),
+                                                ),
+                                              ),
+                                              Text(
+                                                formattedTime,
+                                                style: const TextStyle(
+                                                  fontSize: 13,
+                                                  color: CupertinoColors
+                                                      .systemGrey,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            _getPlainTextPreview(note['content']
+                                                .toString()),
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(
+                                              fontSize: 14,
+                                              color: CupertinoColors.systemGrey,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Row(
+                                            children: [
+                                              Icon(
+                                                CupertinoIcons.folder,
+                                                size: 15,
+                                                color: CupertinoColors.systemGrey,
+                                              ),
+                                              const SizedBox(width: 8),
+                                              const Text(
+                                                'Notes',
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  color: CupertinoColors
+                                                      .systemGrey2,
+                                                ),
+                                              ),
+                                            ],
+                                          )
+                                        ],
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
-                              selectedIndices.isNotEmpty
-                                  ? CupertinoButton(
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ],
+                  );
+                },
+              ),
+            ),
+            // Footer
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              color: CupertinoColors.systemGroupedBackground,
+              child: Row(
+                children: [
+                  if (!_isSelecting) ...[
+                    Expanded(
+                      child: Center(
+                        child: Text(
+                          '${notesBox.length} notes',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            color: CupertinoColors.black,
+                          ),
+                        ),
+                      ),
+                    ),
+                    CupertinoButton(
+                      padding: EdgeInsets.zero,
+                      child: const Icon(
+                        CupertinoIcons.square_pencil,
+                        color: CupertinoColors.systemOrange,
+                        size: 28,
+                      ),
+                      onPressed: () async {
+                        final newNote = await Navigator.push(
+                          context,
+                          CupertinoPageRoute(
+                            builder: (context) => const NoteEditor(
+                              initialTitle: '',
+                              initialContent: '',
+                              initialIsBold: false,
+                              initialIsItalic: false,
+                              initialIsUnderline: false,
+                              initialIsStrikethrough: false,
+                              initialTextAlignment: 'left',
+                              initialFontSize: 16.0,
+                            ),
+                          ),
+                        );
+
+                        if (newNote != null && newNote['title'] != null) {
+                          await notesBox.add({
+                            'title': newNote['title'],
+                            'content': newNote['content'],
+                            'date': DateTime.now().toString(),
+                            'isBold': newNote['isBold'],
+                            'isItalic': newNote['isItalic'],
+                            'isUnderline': newNote['isUnderline'],
+                            'isStrikethrough': newNote['isStrikethrough'],
+                            'textAlignment': newNote['textAlignment'],
+                            'fontSize': newNote['fontSize'],
+                          });
+                        }
+                      },
+                    ),
+                  ] else if (_selectedNotes.isNotEmpty) ...[
+                    Expanded(
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              CupertinoButton(
                                 padding: EdgeInsets.zero,
-                                child: const Text(
-                                  'Cancel',
-                                  style: TextStyle(color: CupertinoColors.systemRed),
+                                onPressed: _togglePinnedStatus,
+                                child: Icon(
+                                  _areSelectedNotesPinned()
+                                      ? CupertinoIcons.pin_slash
+                                      : CupertinoIcons.pin,
+                                  color: CupertinoColors.systemOrange,
+                                  size: 28,
                                 ),
-                                onPressed: () {
-                                  setState(() {
-                                    selectedIndices.clear();
-                                  });
-                                },
-                              )
-                                  : CupertinoButton(
+                              ),
+                              Text(
+                                _areSelectedNotesPinned() ? 'Unpin' : 'Pin',
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: CupertinoColors.systemGrey,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(width: 32),
+                          Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              CupertinoButton(
                                 padding: EdgeInsets.zero,
-                                child: const Icon(
-                                  CupertinoIcons.info_circle,
-                                  size: 23,
-                                  color: CupertinoColors.systemYellow,
-                                ),
-                                onPressed: () {
-                                  showCupertinoDialog(
+                                onPressed: () async {
+                                  final shouldDelete = await showCupertinoDialog(
                                     context: context,
                                     builder: (context) => CupertinoAlertDialog(
-                                      title: const Text('Team Members'),
-                                      content: Column(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: const [
-                                          SizedBox(height: 10),
-                                          Text('Caparra, Christian'),
-                                          Text('De Ramos, Michael'),
-                                          Text('Galang, Jhuniel'),
-                                          Text('Guevarra, John Lloyd'),
-                                          Text('Miranda, Samuel'),
-                                        ],
+                                      title: const Text('Delete Notes'),
+                                      content: Text(
+                                        'Are you sure you want to delete ${_selectedNotes.length} note${_selectedNotes.length > 1 ? 's' : ''}?',
                                       ),
                                       actions: [
                                         CupertinoDialogAction(
+                                          child: const Text('Cancel'),
+                                          onPressed: () =>
+                                              Navigator.of(context).pop(false),
+                                        ),
+                                        CupertinoDialogAction(
                                           isDestructiveAction: true,
-                                          child: const Text('Close'),
-                                          onPressed: () {
-                                            Navigator.of(context).pop();
-                                          },
+                                          child: const Text('Delete'),
+                                          onPressed: () =>
+                                              Navigator.of(context).pop(true),
                                         ),
                                       ],
                                     ),
                                   );
+
+                                  if (shouldDelete == true) {
+                                    await _deleteSelectedNotes();
+                                  }
                                 },
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                        child: CupertinoSearchTextField(
-                          onChanged: (value) {
-                            setState(() {
-                              _searchQuery = value.toLowerCase();
-                            });
-                          },
-                          onSubmitted: (value) {
-                            setState(() {
-                              _searchQuery = value.toLowerCase();
-                            });
-                          },
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Expanded(
-                        child: todolist.isEmpty
-                            ? const Center(child: Text("No tasks yet!"))
-                            : Column(
-                          children: [
-                            _buildSection('Not Completed', notCompleted),
-                            if (completed.isNotEmpty)
-                              _buildSection('Completed', completed),
-                          ],
-                        ),
-                      ),
-                      if (selectedIndices.isNotEmpty)
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                          color: CupertinoColors.systemGroupedBackground,
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceAround,
-                            children: [
-                              CupertinoButton(
-                                onPressed: _markSelectedAsCompleted,
-                                child: const Text(
-                                  'Mark as Completed',
-                                  style: TextStyle(
-                                    color: CupertinoColors.systemYellow,
-                                  ),
-                                ),
-                              ),
-                              CupertinoButton(
-                                padding: EdgeInsets.zero,
-                                onPressed: _showDeleteConfirmation,
-                                child: const Text(
-                                  'Delete',
-                                  style: TextStyle(
-                                    color: CupertinoColors.systemYellow,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        )
-                      else
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                          color: CupertinoColors.systemGroupedBackground,
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: Center(
-                                  child: Text(
-                                    '${todolist.isNotEmpty ? todolist.length : 0} tasks',
-                                    style: const TextStyle(
-                                      fontSize: 14,
-                                      color: CupertinoColors.black,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              CupertinoButton(
-                                padding: EdgeInsets.zero,
                                 child: const Icon(
-                                  CupertinoIcons.square_pencil,
-                                  color: CupertinoColors.systemYellow,
+                                  CupertinoIcons.delete,
+                                  color: CupertinoColors.destructiveRed,
                                   size: 28,
                                 ),
-                                onPressed: () {
-                                  showCupertinoDialog(
-                                    context: context,
-                                    builder: (context) {
-                                      return CupertinoAlertDialog(
-                                        title: const Text('Add Task'),
-                                        content: Column(
-                                          children: [
-                                            const SizedBox(height: 12),
-                                            CupertinoTextField(
-                                              controller: _addTask,
-                                              placeholder: 'Task name',
-                                            ),
-                                          ],
-                                        ),
-                                        actions: [
-                                          CupertinoDialogAction(
-                                            isDestructiveAction: true,
-                                            child: const Text('Cancel'),
-                                            onPressed: () {
-                                              _addTask.clear();
-                                              Navigator.pop(context);
-                                            },
-                                          ),
-                                          CupertinoDialogAction(
-                                            child: const Text('Save'),
-                                            onPressed: () {
-                                              if (_addTask.text.trim().isNotEmpty) {
-                                                _saveTask(_addTask.text.trim());
-                                              }
-                                              _addTask.clear();
-                                              Navigator.pop(context);
-                                            },
-                                          ),
-                                        ],
-                                      );
-                                    },
-                                  );
-                                },
+                              ),
+                              const Text(
+                                'Delete',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: CupertinoColors.systemGrey,
+                                ),
                               ),
                             ],
                           ),
-                        ),
-                    ],
-                  ),
-                ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ],
               ),
-            );
-          },
+            ),
+          ],
         ),
       ),
     );
   }
 
+  Future<void> _openNoteEditor(BuildContext context, Map<String, dynamic> note) async {
+    final updatedNote = await Navigator.push(
+      context,
+      CupertinoPageRoute(
+        builder: (context) => NoteEditor(
+          initialTitle: note['title']?.toString() ?? '',
+          initialContent: note['content']?.toString() ?? '',
+          initialIsBold: note['isBold'] ?? false,
+          initialIsItalic: note['isItalic'] ?? false,
+          initialIsUnderline: note['isUnderline'] ?? false,
+          initialIsStrikethrough: note['isStrikethrough'] ?? false,
+          initialTextAlignment: note['textAlignment'] ?? 'left',
+          initialFontSize: note['fontSize'] ?? 16.0,
+        ),
+      ),
+    );
+
+    if (updatedNote != null && updatedNote['title'] != null) {
+      await notesBox.put(
+        note['key'],
+        {
+          'title': updatedNote['title'],
+          'content': updatedNote['content'],
+          'date': DateTime.now().toString(),
+          'isBold': updatedNote['isBold'],
+          'isItalic': updatedNote['isItalic'],
+          'isUnderline': updatedNote['isUnderline'],
+          'isStrikethrough': updatedNote['isStrikethrough'],
+          'textAlignment': updatedNote['textAlignment'],
+          'fontSize': updatedNote['fontSize'],
+          'isPinned': note['isPinned'] ?? false,
+        },
+      );
+    }
+  }
 }
 
+class NoteEditor extends StatefulWidget {
+  final String initialTitle;
+  final String initialContent;
+  final bool initialIsBold;
+  final bool initialIsItalic;
+  final bool initialIsUnderline;
+  final bool initialIsStrikethrough;
+  final String initialTextAlignment;
+  final double initialFontSize;
+
+  const NoteEditor({
+    super.key,
+    required this.initialTitle,
+    required this.initialContent,
+    required this.initialIsBold,
+    required this.initialIsItalic,
+    required this.initialIsUnderline,
+    required this.initialIsStrikethrough,
+    required this.initialTextAlignment,
+    required this.initialFontSize,
+  });
+
+  @override
+  State<NoteEditor> createState() => _NoteEditorState();
+}
+
+class _NoteEditorState extends State<NoteEditor> {
+  late final TextEditingController titleController;
+  late final TextEditingController contentController;
+  bool isFormattingToolbarVisible = false;
+  bool isFontSizePickerVisible = false;
+  bool isAlignmentPickerVisible = false;
+
+  // Formatting states
+  bool isBold = false;
+  bool isItalic = false;
+  bool isUnderline = false;
+  bool isStrikethrough = false;
+  String textAlignment = 'left';
+  double fontSize = 16.0;
+
+  // Available font sizes
+  final List<double> fontSizes = [12.0, 14.0, 16.0, 18.0, 20.0, 24.0, 28.0, 32.0];
+
+  @override
+  void initState() {
+    super.initState();
+    titleController = TextEditingController(text: widget.initialTitle);
+    contentController = TextEditingController(text: widget.initialContent);
+    isBold = widget.initialIsBold;
+    isItalic = widget.initialIsItalic;
+    isUnderline = widget.initialIsUnderline;
+    isStrikethrough = widget.initialIsStrikethrough;
+    textAlignment = widget.initialTextAlignment;
+    fontSize = widget.initialFontSize;
+  }
+
+  @override
+  void dispose() {
+    titleController.dispose();
+    contentController.dispose();
+    super.dispose();
+  }
+
+  void _toggleFormatting(String format) {
+    setState(() {
+      switch (format) {
+        case 'bold':
+          isBold = !isBold;
+          break;
+        case 'italic':
+          isItalic = !isItalic;
+          break;
+        case 'underline':
+          isUnderline = !isUnderline;
+          break;
+        case 'strikethrough':
+          isStrikethrough = !isStrikethrough;
+          break;
+      }
+    });
+
+    final selection = contentController.selection;
+    if (selection.start == selection.end) {
+      return;
+    }
+
+    final text = contentController.text;
+    final selectedText = text.substring(selection.start, selection.end);
+
+    final updatedText = text.replaceRange(
+      selection.start,
+      selection.end,
+      _applyInlineFormatting(selectedText),
+    );
+
+    contentController.value = TextEditingValue(
+      text: updatedText,
+      selection: TextSelection.collapsed(offset: selection.start),
+    );
+  }
+
+  String _applyInlineFormatting(String text) {
+    String formattedText = text;
+    if (isBold) {
+      formattedText = '[style bold="true"]$formattedText[/style]';
+    }
+    if (isItalic) {
+      formattedText = '[style italic="true"]$formattedText[/style]';
+    }
+    if (isUnderline) {
+      formattedText = '[style underline="true"]$formattedText[/style]';
+    }
+    if (isStrikethrough) {
+      formattedText = '[style strikethrough="true"]$formattedText[/style]';
+    }
+    return formattedText;
+  }
+
+  void _applyAlignment(String alignment) {
+    setState(() {
+      textAlignment = alignment;
+      isAlignmentPickerVisible = false;
+    });
+  }
+
+  void _applyFontSize(double size) {
+    setState(() {
+      fontSize = size;
+      isFontSizePickerVisible = false;
+    });
+  }
+
+  TextStyle _getTextStyle() {
+    return TextStyle(
+      fontSize: fontSize,
+      fontWeight: isBold ? FontWeight.bold : FontWeight.normal,
+      fontStyle: isItalic ? FontStyle.italic : FontStyle.normal,
+      decoration: TextDecoration.combine([
+        isUnderline ? TextDecoration.underline : TextDecoration.none,
+        isStrikethrough ? TextDecoration.lineThrough : TextDecoration.none,
+      ]),
+    );
+  }
+
+  TextAlign _getTextAlign() {
+    switch (textAlignment) {
+      case 'left':
+        return TextAlign.left;
+      case 'center':
+        return TextAlign.center;
+      case 'right':
+        return TextAlign.right;
+      case 'justify':
+        return TextAlign.justify;
+      default:
+        return TextAlign.left;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return CupertinoPageScaffold(
+      navigationBar: CupertinoNavigationBar(
+        leading: CupertinoButton(
+          padding: EdgeInsets.zero,
+          child: const Icon(
+            CupertinoIcons.back,
+            color: CupertinoColors.systemOrange,
+          ),
+          onPressed: () => Navigator.pop(context),
+        ),
+        middle: const Text(
+          'iNotes',
+          style: TextStyle(
+            fontWeight: FontWeight.w600,
+            color: CupertinoColors.black,
+          ),
+        ),
+        trailing: CupertinoButton(
+          padding: EdgeInsets.zero,
+          child: const Text(
+            'Save',
+            style: TextStyle(
+              color: CupertinoColors.systemOrange,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          onPressed: () {
+            if (titleController.text.trim().isNotEmpty) {
+              Navigator.pop(context, {
+                'title': titleController.text,
+                'content': contentController.text,
+                'isBold': isBold,
+                'isItalic': isItalic,
+                'isUnderline': isUnderline,
+                'isStrikethrough': isStrikethrough,
+                'textAlignment': textAlignment,
+                'fontSize': fontSize,
+                'isPinned': false,
+              });
+            } else {
+              Navigator.pop(context);
+            }
+          },
+        ),
+      ),
+      child: SafeArea(
+        child: Stack(
+          children: [
+            Column(
+              children: [
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        CupertinoTextField(
+                          controller: titleController,
+                          placeholder: 'Title',
+                          placeholderStyle: const TextStyle(color: CupertinoColors.placeholderText),
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          style: TextStyle(
+                            fontSize: 30,
+                            fontWeight: FontWeight.bold,
+                            height: 1.5,
+                            color: CupertinoColors.black,
+                          ),
+                          decoration: null,
+                        ),
+                        const SizedBox(height: 11),
+                        CupertinoTextField(
+                          controller: contentController,
+                          placeholder: 'Note something down',
+                          placeholderStyle: const TextStyle(color: CupertinoColors.placeholderText),
+                          maxLines: null,
+                          textAlign: _getTextAlign(),
+                          textAlignVertical: TextAlignVertical.top,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          style: _getTextStyle(),
+                          decoration: null,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+
+            // Floating Format Button (positioned on the left side)
+            if (!isFormattingToolbarVisible && !isFontSizePickerVisible && !isAlignmentPickerVisible)
+              Align(
+                alignment: Alignment.bottomCenter,
+                child: Container(
+                  height: 70,
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  decoration: BoxDecoration(
+                    color: CupertinoColors.systemGrey5,
+                    border: Border(
+                      top: BorderSide(
+                        color: CupertinoColors.systemGrey4,
+                        width: 0.5,
+                      ),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.start,
+                    children: [
+                      CupertinoButton(
+                        padding: EdgeInsets.zero,
+                        child: Container(
+                          width: 50,
+                          height: 50,
+                          decoration: BoxDecoration(
+
+                            borderRadius: BorderRadius.circular(25),
+                          ),
+                          child: const Icon(
+                            Icons.format_bold,
+                            color: CupertinoColors.black,
+                            size: 24,
+                          ),
+                        ),
+                        onPressed: () {
+                          setState(() {
+                            isFormattingToolbarVisible = true;
+                          });
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+
+            // Full Formatting Toolbar (positioned at the bottom)
+            if (isFormattingToolbarVisible)
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                  decoration: const BoxDecoration(
+                    color: CupertinoColors.white,
+                    borderRadius: BorderRadius.only(
+                      topLeft: Radius.circular(17),
+                      topRight: Radius.circular(17),
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: CupertinoColors.systemGrey,
+                        blurRadius: 6.0,
+                        offset: Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child:
+                  Column(
+                    children: [
+                      // Header row with title and close button
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 8.0),
+                            child: Text(
+                              'Format',
+                              style: CupertinoTheme.of(context).textTheme.textStyle.copyWith(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 20,
+                              ),
+                            ),
+                          ),
+                          CupertinoButton(
+                            padding: EdgeInsets.zero,
+                            minSize: 28,
+                            onPressed: () {
+                              setState(() {
+                                isFormattingToolbarVisible = false;
+                              });
+                            },
+                            child: Container(
+                              width: 28,
+                              height: 28,
+                              decoration: BoxDecoration(
+                                color: CupertinoColors.systemGrey5,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: const Icon(
+                                CupertinoIcons.clear,
+                                size: 18,
+                                color: CupertinoColors.black,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 11),
+
+                      // Format Buttons - Wrap in SingleChildScrollView for horizontal scrolling on small devices
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.start,
+                          children: [
+                            // Bold
+                            SizedBox(
+                              width: MediaQuery.of(context).size.width * 0.15,
+                              child: CupertinoButton(
+                                padding: EdgeInsets.zero,
+                                color: isBold ? CupertinoColors.systemOrange : CupertinoColors.systemGrey5,
+                                borderRadius: const BorderRadius.only(
+                                  topLeft: Radius.circular(8),
+                                  bottomLeft: Radius.circular(8),
+                                ),
+                                child: Icon(
+                                  CupertinoIcons.bold,
+                                  color: isBold ? CupertinoColors.white : CupertinoColors.black,
+                                  size: MediaQuery.of(context).size.width * 0.05,
+                                ),
+                                onPressed: () => _toggleFormatting('bold'),
+                              ),
+                            ),
+                            const SizedBox(width: 2),
+
+                            // Italic
+                            SizedBox(
+                              width: MediaQuery.of(context).size.width * 0.15,
+                              child: CupertinoButton(
+                                padding: EdgeInsets.zero,
+                                color: isItalic ? CupertinoColors.systemOrange : CupertinoColors.systemGrey5,
+                                borderRadius: BorderRadius.zero,
+                                child: Icon(
+                                  CupertinoIcons.italic,
+                                  color: isItalic ? CupertinoColors.white : CupertinoColors.black,
+                                  size: MediaQuery.of(context).size.width * 0.05,
+                                ),
+                                onPressed: () => _toggleFormatting('italic'),
+                              ),
+                            ),
+                            const SizedBox(width: 2),
+
+                            // Underline
+                            SizedBox(
+                              width: MediaQuery.of(context).size.width * 0.15,
+                              child: CupertinoButton(
+                                padding: EdgeInsets.zero,
+                                color: isUnderline ? CupertinoColors.systemOrange : CupertinoColors.systemGrey5,
+                                borderRadius: BorderRadius.zero,
+                                child: Icon(
+                                  CupertinoIcons.underline,
+                                  color: isUnderline ? CupertinoColors.white : CupertinoColors.black,
+                                  size: MediaQuery.of(context).size.width * 0.05,
+                                ),
+                                onPressed: () => _toggleFormatting('underline'),
+                              ),
+                            ),
+                            const SizedBox(width: 2),
+
+                            // Strikethrough
+                            SizedBox(
+                              width: MediaQuery.of(context).size.width * 0.15,
+                              child: CupertinoButton(
+                                padding: EdgeInsets.zero,
+                                color: isStrikethrough ? CupertinoColors.systemOrange : CupertinoColors.systemGrey5,
+                                borderRadius: const BorderRadius.only(
+                                  topRight: Radius.circular(8),
+                                  bottomRight: Radius.circular(8),
+                                ),
+                                child: Icon(
+                                  Icons.strikethrough_s,
+                                  color: isStrikethrough ? CupertinoColors.white : CupertinoColors.black,
+                                  size: MediaQuery.of(context).size.width * 0.05,
+                                ),
+                                onPressed: () => _toggleFormatting('strikethrough'),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+
+                            // Font Size
+                            SizedBox(
+                              width: MediaQuery.of(context).size.width * 0.15,
+                              child: CupertinoButton(
+                                padding: EdgeInsets.zero,
+                                color: CupertinoColors.systemGrey5,
+                                borderRadius: BorderRadius.circular(8),
+                                child: Icon(
+                                  Icons.text_fields,
+                                  color: CupertinoColors.black,
+                                  size: MediaQuery.of(context).size.width * 0.05,
+                                ),
+                                onPressed: () {
+                                  setState(() {
+                                    isFormattingToolbarVisible = false;
+                                    isFontSizePickerVisible = true;
+                                  });
+                                },
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      const SizedBox(height: 10),
+
+                      // Alignment Buttons - Also wrapped in SingleChildScrollView
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.start,
+                          children: [
+                            // Left Align
+                            SizedBox(
+                              width: MediaQuery.of(context).size.width * 0.18,
+                              child: CupertinoButton(
+                                padding: EdgeInsets.zero,
+                                color: textAlignment == 'left'
+                                    ? CupertinoColors.systemOrange
+                                    : CupertinoColors.systemGrey5,
+                                borderRadius: const BorderRadius.only(
+                                  topLeft: Radius.circular(8),
+                                  bottomLeft: Radius.circular(8),
+                                ),
+                                child: Icon(
+                                  Icons.format_align_left,
+                                  color: textAlignment == 'left' ? CupertinoColors.white : CupertinoColors.black,
+                                  size: MediaQuery.of(context).size.width * 0.05,
+                                ),
+                                onPressed: () => _applyAlignment('left'),
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+
+                            // Center Align
+                            SizedBox(
+                              width: MediaQuery.of(context).size.width * 0.18,
+                              child: CupertinoButton(
+                                padding: EdgeInsets.zero,
+                                color: textAlignment == 'center'
+                                    ? CupertinoColors.systemOrange
+                                    : CupertinoColors.systemGrey5,
+                                borderRadius: BorderRadius.zero,
+                                child: Icon(
+                                  Icons.format_align_center,
+                                  color: textAlignment == 'center' ? CupertinoColors.white : CupertinoColors.black,
+                                  size: MediaQuery.of(context).size.width * 0.05,
+                                ),
+                                onPressed: () => _applyAlignment('center'),
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+
+                            // Right Align
+                            SizedBox(
+                              width: MediaQuery.of(context).size.width * 0.18,
+                              child: CupertinoButton(
+                                padding: EdgeInsets.zero,
+                                color: textAlignment == 'right'
+                                    ? CupertinoColors.systemOrange
+                                    : CupertinoColors.systemGrey5,
+                                borderRadius: const BorderRadius.only(
+                                  topRight: Radius.circular(8),
+                                  bottomRight: Radius.circular(8),
+                                ),
+                                child: Icon(
+                                  Icons.format_align_right,
+                                  color: textAlignment == 'right' ? CupertinoColors.white : CupertinoColors.black,
+                                  size: MediaQuery.of(context).size.width * 0.05,
+                                ),
+                                onPressed: () => _applyAlignment('right'),
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+
+                            // Justify
+                            SizedBox(
+                              width: MediaQuery.of(context).size.width * 0.18,
+                              child: CupertinoButton(
+                                padding: EdgeInsets.zero,
+                                color: textAlignment == 'justify'
+                                    ? CupertinoColors.systemOrange
+                                    : CupertinoColors.systemGrey5,
+                                borderRadius: BorderRadius.circular(8),
+                                child: Icon(
+                                  Icons.format_align_justify,
+                                  color: textAlignment == 'justify' ? CupertinoColors.white : CupertinoColors.black,
+                                  size: MediaQuery.of(context).size.width * 0.05,
+                                ),
+                                onPressed: () => _applyAlignment('justify'),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+            // Font Size Picker
+            if (isFontSizePickerVisible)
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: Container(
+                  height: 60,
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                  decoration: const BoxDecoration(
+                    border: Border(top: BorderSide(color: CupertinoColors.systemGrey4)),
+                    color: CupertinoColors.white,
+                  ),
+                  child: ListView(
+                    scrollDirection: Axis.horizontal,
+                    children: fontSizes.map((size) {
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        child: CupertinoButton(
+                          padding: EdgeInsets.zero,
+                          child: Container(
+                            width: 50,
+                            height: 40,
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
+                                color: size == fontSize
+                                    ? CupertinoColors.systemBlue
+                                    : CupertinoColors.systemGrey4,
+                                width: 1,
+                              ),
+                            ),
+                            child: Center(
+                              child: Text(
+                                size.toInt().toString(),
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  color: size == fontSize
+                                      ? CupertinoColors.systemBlue
+                                      : CupertinoColors.black,
+                                ),
+                              ),
+                            ),
+                          ),
+                          onPressed: () {
+                            _applyFontSize(size);
+                          },
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}

@@ -179,7 +179,7 @@ class _NotesPageState extends State<NotesPage> {
             if (_isSelecting)
               Container(
                 padding: const EdgeInsets.all(16),
-                color: CupertinoColors.systemGroupedBackground,
+                color: CupertinoColors.white,
                 child: Row(
                   children: [
                     Text(
@@ -440,7 +440,7 @@ class _NotesPageState extends State<NotesPage> {
                       padding: EdgeInsets.zero,
                       child: const Icon(
                         CupertinoIcons.square_pencil,
-                        color: CupertinoColors.systemYellow,
+                        color: CupertinoColors.systemOrange,
                         size: 28,
                       ),
                       onPressed: () async {
@@ -491,7 +491,7 @@ class _NotesPageState extends State<NotesPage> {
                                   _areSelectedNotesPinned()
                                       ? CupertinoIcons.pin_slash
                                       : CupertinoIcons.pin,
-                                  color: CupertinoColors.systemYellow,
+                                  color: CupertinoColors.systemOrange,
                                   size: 28,
                                 ),
                               ),
@@ -805,7 +805,7 @@ class _NoteEditorState extends State<NoteEditor> {
           padding: EdgeInsets.zero,
           child: const Icon(
             CupertinoIcons.back,
-            color: CupertinoColors.systemYellow,
+            color: CupertinoColors.systemOrange,
           ),
           onPressed: () => Navigator.pop(context),
         ),
@@ -821,7 +821,7 @@ class _NoteEditorState extends State<NoteEditor> {
           child: const Text(
             'Save',
             style: TextStyle(
-              color: CupertinoColors.systemYellow,
+              color: CupertinoColors.systemOrange,
               fontWeight: FontWeight.w600,
             ),
           ),
