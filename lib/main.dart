@@ -112,10 +112,8 @@ class _MyAppState extends State<MyApp> {
               ),
             );
           }
-
         }
       },
-
       onLongPress: () {
         setState(() {
           if (isSelected) {
@@ -130,11 +128,12 @@ class _MyAppState extends State<MyApp> {
         child: Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: CupertinoColors.white,
+            color: isSelected
+                ? CupertinoColors.systemGrey5 // Gray background when selected
+                : CupertinoColors.white, // White background when not selected
             borderRadius: BorderRadius.circular(16),
             boxShadow: [
               BoxShadow(
-                // ignore: deprecated_member_use
                 color: CupertinoColors.black.withOpacity(0.05),
                 blurRadius: 8,
                 offset: const Offset(0, 4),
@@ -180,7 +179,6 @@ class _MyAppState extends State<MyApp> {
                         color: CupertinoColors.black,
                       ),
                     ),
-
                   ],
                 ),
               ),
@@ -207,8 +205,6 @@ class _MyAppState extends State<MyApp> {
           ),
         ),
       ),
-
-
     );
   }
 
@@ -413,95 +409,105 @@ class _MyAppState extends State<MyApp> {
                   child: Column(
                     children: [
                       Padding(
-                        padding: const EdgeInsets.all(16.0),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            selectedIndices.isEmpty
-                                ? Row(
-                              children: [
-                                const Text(
-                                  'Todo List',
-                                  style: TextStyle(
+                        padding: const EdgeInsets.all(20.8),
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: selectedIndices.isNotEmpty
+                                ? CupertinoColors.systemGrey5
+                                : CupertinoColors.systemBackground,
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              selectedIndices.isEmpty
+                                  ? Row(
+                                children: [
+                                  const Text(
+                                    'Todo List',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 30,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  CupertinoButton(
+                                    padding: EdgeInsets.zero,
+                                    onPressed: () {
+                                      Navigator.of(context).push(
+                                        CupertinoPageRoute(
+                                          builder: (context) => NotesPage(),
+                                        ),
+                                      );
+                                    },
+                                    child: const Icon(
+                                      CupertinoIcons.line_horizontal_3,
+                                      size: 26,
+                                      color: CupertinoColors.systemYellow,
+                                    ),
+                                  ),
+                                ],
+                              )
+                                  : Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                child: Text(
+                                  '${selectedIndices.length} Selected',
+                                  style: const TextStyle(
                                     fontWeight: FontWeight.bold,
-                                    fontSize: 30,
+                                    fontSize: 25,
                                   ),
                                 ),
-                                const SizedBox(width: 8),
-                                CupertinoButton(
-                                  padding: EdgeInsets.zero,
-                                  onPressed: () {
-                                    Navigator.of(context).push(
-                                      CupertinoPageRoute(
-                                        builder: (context) => NotesPage(),
+                              ),
+                              selectedIndices.isNotEmpty
+                                  ? CupertinoButton(
+                                padding: EdgeInsets.zero,
+                                child: const Text(
+                                  'Cancel',
+                                  style: TextStyle(color: CupertinoColors.systemRed),
+                                ),
+                                onPressed: () {
+                                  setState(() {
+                                    selectedIndices.clear();
+                                  });
+                                },
+                              )
+                                  : CupertinoButton(
+                                padding: EdgeInsets.zero,
+                                child: const Icon(
+                                  CupertinoIcons.info_circle,
+                                  size: 23,
+                                  color: CupertinoColors.systemYellow,
+                                ),
+                                onPressed: () {
+                                  showCupertinoDialog(
+                                    context: context,
+                                    builder: (context) => CupertinoAlertDialog(
+                                      title: const Text('Team Members'),
+                                      content: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: const [
+                                          SizedBox(height: 10),
+                                          Text('Caparra, Christian'),
+                                          Text('De Ramos, Michael'),
+                                          Text('Galang, Jhuniel'),
+                                          Text('Guevarra, John Lloyd'),
+                                          Text('Miranda, Samuel'),
+                                        ],
                                       ),
-                                    );
-                                  },
-                                  child: const Icon(
-                                    CupertinoIcons.line_horizontal_3,
-                                    size: 26,
-                                    color: CupertinoColors.systemYellow,
-                                  ),
-                                ),
-                              ],
-                            )
-                                : Text(
-                              '${selectedIndices.length} Selected',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 30,
-                              ),
-                            ),
-                            selectedIndices.isNotEmpty
-                                ? CupertinoButton(
-                              padding: EdgeInsets.zero,
-                              child: const Text(
-                                'Cancel',
-                                style: TextStyle(color: CupertinoColors.systemBlue),
-                              ),
-                              onPressed: () {
-                                setState(() {
-                                  selectedIndices.clear();
-                                });
-                              },
-                            )
-                                : CupertinoButton(
-                              padding: EdgeInsets.zero,
-                              child: const Icon(
-                                CupertinoIcons.info_circle,
-                                size: 23,
-                                color: CupertinoColors.systemYellow,
-                              ),
-                              onPressed: () {
-                                showCupertinoDialog(
-                                  context: context,
-                                  builder: (context) => CupertinoAlertDialog(
-                                    title: const Text('Team Members'),
-                                    content: Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: const [
-                                        SizedBox(height: 10),
-                                        Text('Caparra, Christian'),
-                                        Text('De Ramos, Michael'),
-                                        Text('Galang, Jhuniel'),
-                                        Text('Guevarra, John Lloyd'),
-                                        Text('Miranda, Samuel'),
+                                      actions: [
+                                        CupertinoDialogAction(
+                                          isDestructiveAction: true,
+                                          child: const Text('Close'),
+                                          onPressed: () {
+                                            Navigator.of(context).pop();
+                                          },
+                                        ),
                                       ],
                                     ),
-                                    actions: [
-                                      CupertinoDialogAction(
-                                        isDestructiveAction: true,
-                                        child: const Text('Close'),
-                                        onPressed: () {
-                                          Navigator.of(context).pop();
-                                        },
-                                      ),
-                                    ],
-                                  ),
-                                );
-                              },
-                            ),
-                          ],
+                                  );
+                                },
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                       Padding(

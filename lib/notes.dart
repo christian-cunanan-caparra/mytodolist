@@ -217,42 +217,7 @@ class _NotesPageState extends State<NotesPage> {
                         color: CupertinoColors.black,
                       ),
                     ),
-                    CupertinoButton(
-                      padding: EdgeInsets.zero,
-                      child: const Icon(
-                        CupertinoIcons.info_circle,
-                        size: 23,
-                        color: CupertinoColors.systemYellow,
-                      ),
-                      onPressed: () {
-                        showCupertinoDialog(
-                          context: context,
-                          builder: (context) => CupertinoAlertDialog(
-                            title: const Text('Team Members'),
-                            content: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: const [
-                                SizedBox(height: 10),
-                                Text('Caparra, Christian'),
-                                Text('De Ramos, Michael'),
-                                Text('Galang, Jhuniel'),
-                                Text('Guevarra, John Lloyd'),
-                                Text('Miranda, Samuel'),
-                              ],
-                            ),
-                            actions: [
-                              CupertinoDialogAction(
-                                isDestructiveAction: true,
-                                child: const Text('Close'),
-                                onPressed: () {
-                                  Navigator.of(context).pop();
-                                },
-                              ),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
+
                   ],
                 ),
               ),
