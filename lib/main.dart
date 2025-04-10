@@ -409,15 +409,14 @@ class _NotesPageState extends State<NotesPage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Padding(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 16.0, vertical: 8),
+                        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8),
                         child: Row(
                           children: [
                             if (groupKey == 'Pinned')
                               const Icon(
                                 CupertinoIcons.pin_fill,
                                 size: 16,
-                                color: CupertinoColors.systemOrange,
+                                color: CupertinoColors.systemOrange, // Keep orange icon
                               ),
                             if (groupKey == 'Pinned') const SizedBox(width: 6),
                             Text(
@@ -426,8 +425,8 @@ class _NotesPageState extends State<NotesPage> {
                                 fontSize: 14,
                                 fontWeight: FontWeight.w500,
                                 color: groupKey == 'Pinned'
-                                    ? CupertinoColors.systemOrange
-                                    : CupertinoColors.black,
+                                    ? CupertinoColors.systemOrange // Keep orange text
+                                    : textColor,
                               ),
                             ),
                           ],
@@ -529,14 +528,15 @@ class _NotesPageState extends State<NotesPage> {
                                       offset: const Offset(0, 2),
                                     ),
                                   ],
-                                  border: groupKey == 'Pinned'
-                                      ? Border.all(
-                                    color: isDarkMode
-                                        ? CupertinoColors.systemOrange
-                                        : CupertinoColors.systemOrange.withOpacity(0.3),
-                                    width: 1.5,
-                                  )
-                                      : null,
+                                  // Remove this entire border condition
+                                  // border: groupKey == 'Pinned'
+                                  //     ? Border.all(
+                                  //         color: isDarkMode
+                                  //             ? CupertinoColors.systemOrange
+                                  //             : CupertinoColors.systemOrange.withOpacity(0.3),
+                                  //         width: 1.5,
+                                  //       )
+                                  //     : null,
                                 ),
                                 child: Row(
                                   crossAxisAlignment: CrossAxisAlignment.start,
