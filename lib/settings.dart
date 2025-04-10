@@ -23,6 +23,11 @@ class _SettingsPageState extends State<SettingsPage> {
 
   @override
   Widget build(BuildContext context) {
+    final brightness = CupertinoTheme.brightnessOf(context);
+    final textColor = brightness == Brightness.dark
+        ? CupertinoColors.white
+        : CupertinoColors.black;
+
     return CupertinoPageScaffold(
       navigationBar: const CupertinoNavigationBar(
         middle: Text('Settings'),
@@ -33,7 +38,6 @@ class _SettingsPageState extends State<SettingsPage> {
           builder: (context, Box box, _) {
             final deletedNotes = box.keys.map((key) {
               final note = box.get(key);
-              // Only include notes that still exist in trash
               return note != null
                   ? {
                 'key': key,
@@ -57,8 +61,9 @@ class _SettingsPageState extends State<SettingsPage> {
                   ),
                 ),
                 CupertinoListSection.insetGrouped(
+                  dividerMargin: 0,
                   children: [
-                    CupertinoListTile(
+                    CupertinoListTile.notched(
                       title: const Text('Appearance'),
                       trailing: const CupertinoListTileChevron(),
                       onTap: () {
@@ -70,11 +75,52 @@ class _SettingsPageState extends State<SettingsPage> {
                         );
                       },
                     ),
-                    CupertinoListTile(
+                    CupertinoListTile.notched(
                       title: const Text('Backup & Sync'),
                       trailing: const CupertinoListTileChevron(),
                       onTap: () {
                         // Navigate to backup settings
+                      },
+                    ),
+                    CupertinoListTile.notched(
+                      title: const Text('Developers'),
+                      trailing: const CupertinoListTileChevron(),
+                      onTap: () {
+                        final developers = [
+                          'Caparra, Christian',
+                          'De Ramos, Michael',
+                          'Galang, Jhuniel',
+                          'Guevarra, John Lloyd',
+                          'Miranda, Samuel',
+                        ]..sort();
+
+                        showCupertinoModalPopup(
+                          context: context,
+                          builder: (context) => CupertinoActionSheet(
+                            title: Text(
+                              'Developers',
+                              style: TextStyle(color: textColor),
+                            ),
+                            message: Text(
+                              'The team behind this app',
+                              style: TextStyle(color: textColor),
+                            ),
+                            actions: developers.map((dev) =>
+                                CupertinoActionSheetAction(
+                                  onPressed: () {}, // Empty function to satisfy required parameter
+                                  child: Text(
+                                    dev,
+                                    style: TextStyle(color: textColor),
+                                  ),
+                                ),
+                            ).toList(),
+                            cancelButton: CupertinoActionSheetAction(
+                              isDestructiveAction: true,
+                              onPressed: () => Navigator.pop(context),
+                              child: const Text('Close'),
+                            ),
+                          ),
+                        );
                       },
                     ),
                   ],
@@ -91,19 +137,21 @@ class _SettingsPageState extends State<SettingsPage> {
                 ),
                 if (deletedNotes.isEmpty)
                   CupertinoListSection.insetGrouped(
+                    dividerMargin: 0,
                     children: const [
-                      CupertinoListTile(
+                      CupertinoListTile.notched(
                         title: Text('No recently deleted notes'),
                       ),
                     ],
                   )
                 else
                   CupertinoListSection.insetGrouped(
+                    dividerMargin: 0,
                     children: deletedNotes.map((note) {
                       final dateDeleted = DateTime.parse(note!['dateDeleted']);
                       final formattedDate = DateFormat('MMM d, y - h:mm a').format(dateDeleted);
 
-                      return CupertinoListTile(
+                      return CupertinoListTile.notched(
                         title: Text(note['title'] ?? 'Untitled Note'),
                         subtitle: Text('Deleted $formattedDate'),
                         trailing: Row(
@@ -116,7 +164,6 @@ class _SettingsPageState extends State<SettingsPage> {
                                 color: CupertinoColors.systemOrange,
                               ),
                               onPressed: () async {
-                                // Restore the note
                                 final notesBox = Hive.box('notesBox');
                                 await notesBox.put(note['key'], {
                                   'title': note['title'],
@@ -167,8 +214,9 @@ class _SettingsPageState extends State<SettingsPage> {
                   ),
                 if (deletedNotes.isNotEmpty)
                   CupertinoListSection.insetGrouped(
+                    dividerMargin: 0,
                     children: [
-                      CupertinoListTile(
+                      CupertinoListTile.notched(
                         title: const Text(
                           'Empty Trash',
                           style: TextStyle(color: CupertinoColors.destructiveRed),
