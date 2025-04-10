@@ -75,15 +75,9 @@ class _SettingsPageState extends State<SettingsPage> {
                         );
                       },
                     ),
+
                     CupertinoListTile.notched(
-                      title: const Text('Backup & Sync'),
-                      trailing: const CupertinoListTileChevron(),
-                      onTap: () {
-                        // Navigate to backup settings
-                      },
-                    ),
-                    CupertinoListTile.notched(
-                      title: const Text('Developers'),
+                      title: const Text('About'),
                       trailing: const CupertinoListTileChevron(),
                       onTap: () {
                         final developers = [

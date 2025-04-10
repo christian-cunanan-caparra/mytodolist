@@ -1,10 +1,12 @@
+import 'dart:async';
+
 import 'package:bsitdolist/settings.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
 import 'package:hive_flutter/adapters.dart';
 import 'package:intl/intl.dart';
-import 'settings.dart';
+
 
 
 void main() async {
@@ -348,7 +350,7 @@ class _NotesPageState extends State<NotesPage> {
                       'iNotes',
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
-                        fontSize: 37.5,
+                        fontSize: 33,
                         color: CupertinoColors.black,
                       ),
                     ),
@@ -884,7 +886,7 @@ class _NoteEditorState extends State<NoteEditor> {
   double fontSize = 16.0;
 
   // Available font sizes
-  final List<double> fontSizes = [12.0, 14.0, 16.0, 18.0, 20.0, 24.0, 28.0, 32.0];
+  final List<double> fontSizes = [12.0, 14.0, 16.0, 18.0, 20.0, 24.0, 28.0, 32.0, 64.0];
 
   @override
   void initState() {
@@ -899,11 +901,31 @@ class _NoteEditorState extends State<NoteEditor> {
     fontSize = widget.initialFontSize;
   }
 
+
   @override
   void dispose() {
+    _saveNote(); // Save when disposing (when navigating back)
     titleController.dispose();
     contentController.dispose();
     super.dispose();
+  }
+
+  void _saveNote() {
+    if (titleController.text.trim().isNotEmpty) {
+      Navigator.pop(context, {
+        'title': titleController.text,
+        'content': contentController.text,
+        'isBold': isBold,
+        'isItalic': isItalic,
+        'isUnderline': isUnderline,
+        'isStrikethrough': isStrikethrough,
+        'textAlignment': textAlignment,
+        'fontSize': fontSize,
+        'isPinned': false,
+      });
+    } else {
+      Navigator.pop(context);
+    }
   }
 
   void _toggleFormatting(String format) {
@@ -1006,49 +1028,32 @@ class _NoteEditorState extends State<NoteEditor> {
   Widget build(BuildContext context) {
     return CupertinoPageScaffold(
       navigationBar: CupertinoNavigationBar(
-        leading: CupertinoButton(
-          padding: EdgeInsets.zero,
-          child: const Icon(
-            CupertinoIcons.back,
-            color: CupertinoColors.systemOrange,
-          ),
-          onPressed: () => Navigator.pop(context),
-        ),
-        middle: const Text(
-          'iNotes',
-          style: TextStyle(
-            fontWeight: FontWeight.w600,
-            color: CupertinoColors.black,
-          ),
-        ),
-        trailing: CupertinoButton(
-          padding: EdgeInsets.zero,
-          child: const Text(
-            'Save',
-            style: TextStyle(
-              color: CupertinoColors.systemOrange,
-              fontWeight: FontWeight.w600,
+        leading: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CupertinoButton(
+              padding: EdgeInsets.zero,
+              child: const Icon(
+                CupertinoIcons.back,
+                color: CupertinoColors.systemOrange,
+              ),
+              onPressed: () {
+                _saveNote(); // Save when back button is pressed
+              },
             ),
-          ),
-          onPressed: () {
-            if (titleController.text.trim().isNotEmpty) {
-              Navigator.pop(context, {
-                'title': titleController.text,
-                'content': contentController.text,
-                'isBold': isBold,
-                'isItalic': isItalic,
-                'isUnderline': isUnderline,
-                'isStrikethrough': isStrikethrough,
-                'textAlignment': textAlignment,
-                'fontSize': fontSize,
-                'isPinned': false,
-              });
-            } else {
-              Navigator.pop(context);
-            }
-          },
+            const Text(
+              'iNotes',
+              style: TextStyle(
+                color: CupertinoColors.systemOrange,
+              ),
+            ),
+          ],
         ),
+        // Removed the Save button from the trailing
       ),
+
+
+
       child: SafeArea(
         child: Stack(
           children: [
@@ -1100,12 +1105,9 @@ class _NoteEditorState extends State<NoteEditor> {
                   height: 70,
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   decoration: BoxDecoration(
-                    color: CupertinoColors.systemGrey5,
+
                     border: Border(
-                      top: BorderSide(
-                        color: CupertinoColors.systemGrey4,
-                        width: 0.5,
-                      ),
+
                     ),
                   ),
                   child: Row(
@@ -1117,12 +1119,11 @@ class _NoteEditorState extends State<NoteEditor> {
                           width: 50,
                           height: 50,
                           decoration: BoxDecoration(
-
                             borderRadius: BorderRadius.circular(25),
                           ),
                           child: const Icon(
                             Icons.format_bold,
-                            color: CupertinoColors.black,
+                            color: CupertinoColors.systemOrange,
                             size: 24,
                           ),
                         ),
@@ -1136,7 +1137,6 @@ class _NoteEditorState extends State<NoteEditor> {
                   ),
                 ),
               ),
-
 
             // Full Formatting Toolbar (positioned at the bottom)
             if (isFormattingToolbarVisible)
@@ -1160,8 +1160,7 @@ class _NoteEditorState extends State<NoteEditor> {
                       ),
                     ],
                   ),
-                  child:
-                  Column(
+                  child: Column(
                     children: [
                       // Header row with title and close button
                       Row(
@@ -1228,6 +1227,7 @@ class _NoteEditorState extends State<NoteEditor> {
                                 onPressed: () => _toggleFormatting('bold'),
                               ),
                             ),
+
                             const SizedBox(width: 2),
 
                             // Italic

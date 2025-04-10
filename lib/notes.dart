@@ -22,7 +22,7 @@ class NotesPage extends StatefulWidget {
 class _NotesPageState extends State<NotesPage> {
   String _searchQuery = '';
   late Box notesBox;
-  Set<dynamic> _selectedNotes = {};
+  final Set<dynamic> _selectedNotes = {};
   bool _isSelecting = false;
 
   @override
@@ -314,6 +314,7 @@ class _NotesPageState extends State<NotesPage> {
                                 ],
                                 border: groupKey == 'Pinned'
                                     ? Border.all(
+                                  // ignore: deprecated_member_use
                                   color: CupertinoColors.white.withOpacity(0.3),
                                   width: 1.5,
                                 )
