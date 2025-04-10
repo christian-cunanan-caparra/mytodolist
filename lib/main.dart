@@ -4,38 +4,70 @@ import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
 import 'package:hive_flutter/adapters.dart';
 import 'package:intl/intl.dart';
+import 'settings.dart';
+
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Hive.initFlutter();
   await Hive.openBox('notesBox');
-  await Hive.openBox('trashBox'); // Add this line
+  await Hive.openBox('trashBox');
+  await Hive.openBox('settingsBox');
   runApp(const MyApp());
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
   const MyApp({super.key});
 
   @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  late Box settingsBox;
+  bool isDarkMode = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadTheme();
+  }
+
+  Future<void> _loadTheme() async {
+    settingsBox = await Hive.openBox('settingsBox');
+    setState(() {
+      isDarkMode = settingsBox.get('darkMode', defaultValue: false);
+    });
+    settingsBox.listenable().addListener(_updateTheme);
+  }
+
+  void _updateTheme() {
+    setState(() {
+      isDarkMode = settingsBox.get('darkMode', defaultValue: false);
+    });
+  }
+
+  @override
+  void dispose() {
+    settingsBox.listenable().removeListener(_updateTheme);
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return const CupertinoApp(
+    return CupertinoApp(
       debugShowCheckedModeBanner: false,
       title: 'iNote',
       theme: CupertinoThemeData(
-        brightness: Brightness.light,
+        brightness: isDarkMode ? Brightness.dark : Brightness.light,
         primaryColor: CupertinoColors.systemOrange,
       ),
-      home: NotesPage(),
+      home: const NotesPage(),
     );
   }
 }
 
-class NotesPage extends StatefulWidget {
-  const NotesPage({super.key});
 
-  @override
-  State<NotesPage> createState() => _NotesPageState();
-}
 
 class _SwipeActionButton extends StatelessWidget {
   final IconData icon;
@@ -73,6 +105,13 @@ class _SwipeActionButton extends StatelessWidget {
       ),
     );
   }
+}
+
+class NotesPage extends StatefulWidget {
+  const NotesPage({super.key});
+
+  @override
+  State<NotesPage> createState() => _NotesPageState();
 }
 
 class _NotesPageState extends State<NotesPage> {
@@ -251,10 +290,21 @@ class _NotesPageState extends State<NotesPage> {
     final filteredNotes = notesList.where((note) {
       final title = note['title']?.toString().toLowerCase() ?? '';
       final content = _getPlainTextPreview(note['content']?.toString()).toLowerCase();
+
       return title.contains(_searchQuery.toLowerCase()) ||
           content.contains(_searchQuery.toLowerCase());
     }).toList();
 
+    final isDarkMode = CupertinoTheme.of(context).brightness == Brightness.dark;
+    final backgroundColor = isDarkMode
+        ? CupertinoColors.darkBackgroundGray
+        : CupertinoColors.white;
+    final textColor = isDarkMode
+        ? CupertinoColors.white
+        : CupertinoColors.black;
+    final secondaryTextColor = isDarkMode
+        ? CupertinoColors.systemGrey
+        : CupertinoColors.systemGrey2;
     final groupedNotes = _groupNotes(filteredNotes);
 
     return CupertinoPageScaffold(
@@ -340,10 +390,10 @@ class _NotesPageState extends State<NotesPage> {
             const SizedBox(height: 12),
             Expanded(
               child: filteredNotes.isEmpty
-                  ? const Center(
+                  ? Center(
                 child: Text(
                   'No notes yet!',
-                  style: TextStyle(color: CupertinoColors.black),
+                  style: TextStyle(color: textColor),
                 ),
               )
                   : ListView.builder(
@@ -446,8 +496,7 @@ class _NotesPageState extends State<NotesPage> {
                             ),
                           ),
                           child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 16.0, vertical: 6),
+                            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 6),
                             child: GestureDetector(
                               onLongPress: () {
                                 _toggleSelectionMode();
@@ -462,32 +511,32 @@ class _NotesPageState extends State<NotesPage> {
                               },
                               child: Container(
                                 width: double.infinity,
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 16, vertical: 12),
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                                 decoration: BoxDecoration(
                                   color: _selectedNotes.contains(note['key'])
-                                      ? CupertinoColors.white
-                                      : CupertinoColors.white,
+                                      ? CupertinoColors.systemOrange.withOpacity(0.2)
+                                      : backgroundColor,
                                   borderRadius: BorderRadius.circular(12),
                                   boxShadow: [
                                     BoxShadow(
-                                      color: CupertinoColors.systemGrey
-                                          .withOpacity(0.1),
+                                      color: isDarkMode
+                                          ? CupertinoColors.systemGrey.withOpacity(0.3)
+                                          : CupertinoColors.systemGrey.withOpacity(0.1),
                                       blurRadius: 4,
                                       offset: const Offset(0, 2),
                                     ),
                                   ],
                                   border: groupKey == 'Pinned'
                                       ? Border.all(
-                                    color: CupertinoColors.white
-                                        .withOpacity(0.3),
+                                    color: isDarkMode
+                                        ? CupertinoColors.systemOrange
+                                        : CupertinoColors.systemOrange.withOpacity(0.3),
                                     width: 1.5,
                                   )
                                       : null,
                                 ),
                                 child: Row(
-                                  crossAxisAlignment:
-                                  CrossAxisAlignment.start,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     if (note['isPinned'] && !_isSelecting)
                                       Container(
@@ -530,40 +579,43 @@ class _NotesPageState extends State<NotesPage> {
                                         children: [
                                           Row(
                                             children: [
+                                      Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Row(
+                                            children: [
                                               Expanded(
                                                 child: Text(
-                                                  note['title']?.toString() ??
-                                                      'No title',
-                                                  style: const TextStyle(
-                                                    fontWeight:
-                                                    FontWeight.w600,
+                                                  note['title']?.toString() ?? 'No title',
+                                                  style: TextStyle(
+                                                    fontWeight: FontWeight.w600,
                                                     fontSize: 16,
-                                                    color:
-                                                    CupertinoColors.black,
+                                                    color: textColor,
                                                   ),
                                                 ),
                                               ),
                                               Text(
                                                 formattedTime,
-                                                style: const TextStyle(
+                                                style: TextStyle(
                                                   fontSize: 13,
-                                                  color: CupertinoColors
-                                                      .systemGrey,
+                                                  color: secondaryTextColor,
                                                 ),
                                               ),
                                             ],
                                           ),
                                           const SizedBox(height: 4),
                                           Text(
-                                            _getPlainTextPreview(note['content']
-                                                .toString()),
+                                            _getPlainTextPreview(note['content'].toString()),
                                             maxLines: 2,
                                             overflow: TextOverflow.ellipsis,
-                                            style: const TextStyle(
+                                            style: TextStyle(
                                               fontSize: 14,
-                                              color: CupertinoColors.systemGrey,
+                                              color: secondaryTextColor,
                                             ),
                                           ),
+
+
                                           const SizedBox(height: 4),
                                           Row(
                                             children: [
@@ -583,6 +635,12 @@ class _NotesPageState extends State<NotesPage> {
                                               ),
                                             ],
                                           )
+
+                                          ],
+                                          ),
+                                         ),
+                                        ],
+                                          ),
                                         ],
                                       ),
                                     ),
@@ -601,7 +659,9 @@ class _NotesPageState extends State<NotesPage> {
             // Footer
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              color: CupertinoColors.systemGroupedBackground,
+              color: isDarkMode
+                  ? CupertinoColors.darkBackgroundGray
+                  : CupertinoColors.systemGroupedBackground,
               child: Row(
                 children: [
                   if (!_isSelecting) ...[
@@ -609,9 +669,9 @@ class _NotesPageState extends State<NotesPage> {
                       child: Center(
                         child: Text(
                           '${notesBox.length} notes',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 14,
-                            color: CupertinoColors.black,
+                            color: textColor,
                           ),
                         ),
                       ),

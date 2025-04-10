@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
 import 'package:hive_flutter/adapters.dart';
 import 'package:intl/intl.dart';
+import 'AppearancePage.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -61,7 +62,12 @@ class _SettingsPageState extends State<SettingsPage> {
                       title: const Text('Appearance'),
                       trailing: const CupertinoListTileChevron(),
                       onTap: () {
-                        // Navigate to appearance settings
+                        Navigator.push(
+                          context,
+                          CupertinoPageRoute(
+                            builder: (context) => const AppearancePage(),
+                          ),
+                        );
                       },
                     ),
                     CupertinoListTile(
