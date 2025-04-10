@@ -885,7 +885,7 @@ class _NoteEditorState extends State<NoteEditor> {
   String textAlignment = 'left';
   double fontSize = 16.0;
 
-  // Available font sizes
+  // Availableas font sizes
   final List<double> fontSizes = [12.0, 14.0, 16.0, 18.0, 20.0, 24.0, 28.0, 32.0, 64.0];
 
   @override
