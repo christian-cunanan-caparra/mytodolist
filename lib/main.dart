@@ -316,14 +316,15 @@ class _NotesPageState extends State<NotesPage> {
             if (_isSelecting)
               Container(
                 padding: const EdgeInsets.all(16),
-                color: CupertinoColors.white,
+                color: CupertinoTheme.of(context).barBackgroundColor,
                 child: Row(
                   children: [
                     Text(
                       '${_selectedNotes.length} Selected',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
+                        color: CupertinoTheme.of(context).textTheme.textStyle.color,
                       ),
                     ),
                     const Spacer(),
@@ -346,12 +347,12 @@ class _NotesPageState extends State<NotesPage> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text(
+                    Text(
                       'iNotes',
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
-                        fontSize: 33,
-                        color: CupertinoColors.black,
+                        fontSize: 37.5,
+                        color: CupertinoTheme.of(context).textTheme.textStyle.color,
                       ),
                     ),
                     CupertinoButton(
@@ -1026,6 +1027,8 @@ class _NoteEditorState extends State<NoteEditor> {
 
   @override
   Widget build(BuildContext context) {
+    final isDarkMode = CupertinoTheme.of(context).brightness == Brightness.dark;
+
     return CupertinoPageScaffold(
       navigationBar: CupertinoNavigationBar(
         leading: Row(
@@ -1033,15 +1036,13 @@ class _NoteEditorState extends State<NoteEditor> {
           children: [
             CupertinoButton(
               padding: EdgeInsets.zero,
-              child: const Icon(
+              child: Icon(
                 CupertinoIcons.back,
                 color: CupertinoColors.systemOrange,
               ),
-              onPressed: () {
-                _saveNote(); // Save when back button is pressed
-              },
+              onPressed: _saveNote,
             ),
-            const Text(
+            Text(
               'iNotes',
               style: TextStyle(
                 color: CupertinoColors.systemOrange,
@@ -1049,7 +1050,6 @@ class _NoteEditorState extends State<NoteEditor> {
             ),
           ],
         ),
-        // Removed the Save button from the trailing
       ),
 
 
@@ -1068,13 +1068,15 @@ class _NoteEditorState extends State<NoteEditor> {
                         CupertinoTextField(
                           controller: titleController,
                           placeholder: 'Title',
-                          placeholderStyle: const TextStyle(color: CupertinoColors.placeholderText),
+                          placeholderStyle: TextStyle(
+                            color: CupertinoTheme.of(context).textTheme.textStyle.color?.withOpacity(0.5),
+                          ),
                           padding: const EdgeInsets.symmetric(vertical: 12),
                           style: TextStyle(
                             fontSize: 30,
                             fontWeight: FontWeight.bold,
                             height: 1.5,
-                            color: CupertinoColors.black,
+                            color: CupertinoTheme.of(context).textTheme.textStyle.color,
                           ),
                           decoration: null,
                         ),
@@ -1082,12 +1084,16 @@ class _NoteEditorState extends State<NoteEditor> {
                         CupertinoTextField(
                           controller: contentController,
                           placeholder: 'Note something down',
-                          placeholderStyle: const TextStyle(color: CupertinoColors.placeholderText),
+                          placeholderStyle: TextStyle(
+                            color: CupertinoTheme.of(context).textTheme.textStyle.color?.withOpacity(0.5),
+                          ),
                           maxLines: null,
                           textAlign: _getTextAlign(),
                           textAlignVertical: TextAlignVertical.top,
                           padding: const EdgeInsets.symmetric(vertical: 12),
-                          style: _getTextStyle(),
+                          style: _getTextStyle().copyWith(
+                            color: CupertinoTheme.of(context).textTheme.textStyle.color,
+                          ),
                           decoration: null,
                         ),
                       ],
@@ -1097,7 +1103,7 @@ class _NoteEditorState extends State<NoteEditor> {
               ],
             ),
 
-            // Floating Format Button (positioned on the left side)
+            // Floating Format Button
             if (!isFormattingToolbarVisible && !isFontSizePickerVisible && !isAlignmentPickerVisible)
               Align(
                 alignment: Alignment.bottomCenter,
@@ -1105,9 +1111,14 @@ class _NoteEditorState extends State<NoteEditor> {
                   height: 70,
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   decoration: BoxDecoration(
-
+                    color: CupertinoTheme.of(context).barBackgroundColor,
                     border: Border(
-
+                      top: BorderSide(
+                        color: isDarkMode
+                            ? CupertinoColors.systemGrey6.darkColor
+                            : CupertinoColors.systemGrey4,
+                        width: 0.5,
+                      ),
                     ),
                   ),
                   child: Row(
@@ -1121,7 +1132,7 @@ class _NoteEditorState extends State<NoteEditor> {
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(25),
                           ),
-                          child: const Icon(
+                          child: Icon(
                             Icons.format_bold,
                             color: CupertinoColors.systemOrange,
                             size: 24,
@@ -1146,23 +1157,24 @@ class _NoteEditorState extends State<NoteEditor> {
                 bottom: 0,
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                  decoration: const BoxDecoration(
-                    color: CupertinoColors.white,
-                    borderRadius: BorderRadius.only(
+                  decoration: BoxDecoration(
+                    color: CupertinoTheme.of(context).barBackgroundColor,
+                    borderRadius: const BorderRadius.only(
                       topLeft: Radius.circular(17),
                       topRight: Radius.circular(17),
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: CupertinoColors.systemGrey,
+                        color: isDarkMode
+                            ? CupertinoColors.black
+                            : CupertinoColors.systemGrey,
                         blurRadius: 6.0,
-                        offset: Offset(0, 2),
+                        offset: const Offset(0, 2),
                       ),
                     ],
                   ),
                   child: Column(
                     children: [
-                      // Header row with title and close button
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
@@ -1188,13 +1200,15 @@ class _NoteEditorState extends State<NoteEditor> {
                               width: 28,
                               height: 28,
                               decoration: BoxDecoration(
-                                color: CupertinoColors.systemGrey5,
+                                color: isDarkMode
+                                    ? CupertinoColors.systemGrey6.darkColor
+                                    : CupertinoColors.systemGrey5,
                                 borderRadius: BorderRadius.circular(8),
                               ),
-                              child: const Icon(
+                              child: Icon(
                                 CupertinoIcons.clear,
                                 size: 18,
-                                color: CupertinoColors.black,
+                                color: CupertinoTheme.of(context).textTheme.textStyle.color,
                               ),
                             ),
                           ),
@@ -1413,9 +1427,15 @@ class _NoteEditorState extends State<NoteEditor> {
                 child: Container(
                   height: 60,
                   padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                  decoration: const BoxDecoration(
-                    border: Border(top: BorderSide(color: CupertinoColors.systemGrey4)),
-                    color: CupertinoColors.white,
+                  decoration: BoxDecoration(
+                    border: Border(
+                      top: BorderSide(
+                        color: isDarkMode
+                            ? CupertinoColors.systemGrey6.darkColor
+                            : CupertinoColors.systemGrey4,
+                      ),
+                    ),
+                    color: CupertinoTheme.of(context).barBackgroundColor,
                   ),
                   child: ListView(
                     scrollDirection: Axis.horizontal,
@@ -1432,6 +1452,8 @@ class _NoteEditorState extends State<NoteEditor> {
                               border: Border.all(
                                 color: size == fontSize
                                     ? CupertinoColors.systemBlue
+                                    : isDarkMode
+                                    ? CupertinoColors.systemGrey6.darkColor
                                     : CupertinoColors.systemGrey4,
                                 width: 1,
                               ),
@@ -1443,7 +1465,7 @@ class _NoteEditorState extends State<NoteEditor> {
                                   fontSize: 16,
                                   color: size == fontSize
                                       ? CupertinoColors.systemBlue
-                                      : CupertinoColors.black,
+                                      : CupertinoTheme.of(context).textTheme.textStyle.color,
                                 ),
                               ),
                             ),
