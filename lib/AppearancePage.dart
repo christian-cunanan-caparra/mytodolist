@@ -1,5 +1,4 @@
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
 
 class AppearancePage extends StatefulWidget {
@@ -30,8 +29,32 @@ class _AppearancePageState extends State<AppearancePage> {
   @override
   Widget build(BuildContext context) {
     return CupertinoPageScaffold(
-      navigationBar: const CupertinoNavigationBar(
-        middle: Text('Appearance'),
+      navigationBar: CupertinoNavigationBar(
+        leading: Transform.translate(
+          offset: Offset(-8, 0), // Move 8 pixels to the left
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CupertinoButton(
+                padding: EdgeInsets.zero,
+                onPressed: () {
+                  Navigator.pop(context); // This goes back to the previous page
+                },
+                child: Icon(
+                  CupertinoIcons.back,
+                  color: CupertinoColors.systemOrange,
+                  size: 30,
+                ),
+              ),
+              Text(
+                'Appearance',
+                style: TextStyle(
+                  color: CupertinoColors.systemOrange,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
       child: SafeArea(
         child: Column(

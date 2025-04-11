@@ -15,7 +15,133 @@ void main() async {
   await Hive.openBox('notesBox');
   await Hive.openBox('trashBox');
   await Hive.openBox('settingsBox');
+  await Hive.openBox('securityBox');
   runApp(const MyApp());
+}
+
+class LockScreen extends StatefulWidget {
+  final Widget child;
+  const LockScreen({super.key, required this.child});
+
+  @override
+  State<LockScreen> createState() => _LockScreenState();
+}
+
+class _LockScreenState extends State<LockScreen> {
+  final TextEditingController _passwordController = TextEditingController();
+  late Box securityBox;
+  bool _isFirstTime = true;
+  bool _isPasswordCorrect = true;
+
+  @override
+  void initState() {
+    super.initState();
+    securityBox = Hive.box('securityBox');
+    _isFirstTime = securityBox.get('password', defaultValue: null) == null;
+  }
+
+  void _checkPassword() {
+    final storedPassword = securityBox.get('password');
+    if (_isFirstTime || _passwordController.text == storedPassword) {
+      if (_isFirstTime) {
+        securityBox.put('password', _passwordController.text);
+      }
+      Navigator.pushReplacement(
+        context,
+        CupertinoPageRoute(builder: (context) => widget.child),
+      );
+    } else {
+      setState(() {
+        _isPasswordCorrect = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return CupertinoPageScaffold(
+      navigationBar: const CupertinoNavigationBar(
+        middle: Text('iNotes Security'),
+      ),
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(20.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(
+                CupertinoIcons.lock_fill,
+                size: 60,
+                color: CupertinoColors.systemOrange,
+              ),
+              const SizedBox(height: 30),
+              Text(
+                _isFirstTime ? 'Set a password' : 'Enter your password',
+                style: const TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 20),
+              CupertinoTextField(
+                controller: _passwordController,
+                placeholder: 'Password',
+                obscureText: true,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  border: Border.all(color: CupertinoColors.systemGrey),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              if (!_isPasswordCorrect)
+                const Padding(
+                  padding: EdgeInsets.only(top: 10),
+                  child: Text(
+                    'Incorrect password',
+                    style: TextStyle(
+                      color: CupertinoColors.destructiveRed,
+                    ),
+                  ),
+                ),
+              const SizedBox(height: 30),
+              SizedBox(
+                width: double.infinity,
+                child: CupertinoButton(
+                  color: CupertinoColors.systemOrange,
+                  onPressed: _checkPassword,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      const Text(
+                        'Login',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: CupertinoColors.white,
+                        ),
+                      ),
+                      if (_isFirstTime) // Show only if it's the first time
+                        const Text(
+                          'Set Password',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: CupertinoColors.white,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+
+
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class MyApp extends StatefulWidget {
@@ -28,11 +154,14 @@ class MyApp extends StatefulWidget {
 class _MyAppState extends State<MyApp> {
   late Box settingsBox;
   bool isDarkMode = false;
+  late Box securityBox;
+  bool isLockEnabled = false;
 
   @override
   void initState() {
     super.initState();
     _loadTheme();
+    _loadSecuritySettings();
   }
 
   Future<void> _loadTheme() async {
@@ -41,6 +170,13 @@ class _MyAppState extends State<MyApp> {
       isDarkMode = settingsBox.get('darkMode', defaultValue: false);
     });
     settingsBox.listenable().addListener(_updateTheme);
+  }
+
+  Future<void> _loadSecuritySettings() async {
+    securityBox = await Hive.openBox('securityBox');
+    setState(() {
+      isLockEnabled = securityBox.get('isLockEnabled', defaultValue: false);
+    });
   }
 
   void _updateTheme() {
@@ -64,7 +200,9 @@ class _MyAppState extends State<MyApp> {
         brightness: isDarkMode ? Brightness.dark : Brightness.light,
         primaryColor: CupertinoColors.systemOrange,
       ),
-      home: const NotesPage(),
+      home: isLockEnabled
+          ? const LockScreen(child: NotesPage())
+          : const NotesPage(),
     );
   }
 }
@@ -324,7 +462,7 @@ class _NotesPageState extends State<NotesPage> {
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
-                        color: CupertinoTheme.of(context).textTheme.textStyle.color,
+
                       ),
                     ),
                     const Spacer(),
@@ -351,7 +489,7 @@ class _NotesPageState extends State<NotesPage> {
                       'iNotes',
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
-                        fontSize: 37.5,
+                        fontSize: 33,
                         color: CupertinoTheme.of(context).textTheme.textStyle.color,
                       ),
                     ),
@@ -380,6 +518,7 @@ class _NotesPageState extends State<NotesPage> {
                   ],
                 ),
               ),
+            const SizedBox(height: 12),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16.0),
               child: CupertinoSearchTextField(
@@ -1031,26 +1170,31 @@ class _NoteEditorState extends State<NoteEditor> {
 
     return CupertinoPageScaffold(
       navigationBar: CupertinoNavigationBar(
-        leading: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            CupertinoButton(
-              padding: EdgeInsets.zero,
-              child: Icon(
-                CupertinoIcons.back,
-                color: CupertinoColors.systemOrange,
+        leading: Transform.translate(
+          offset: Offset(-8, 0), // Move 8 pixels to the left
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CupertinoButton(
+                padding: EdgeInsets.zero,
+                onPressed: _saveNote,
+                child: Icon(
+                  CupertinoIcons.back,
+                  color: CupertinoColors.systemOrange,
+                  size: 30,
+                ),
               ),
-              onPressed: _saveNote,
-            ),
-            Text(
-              'iNotes',
-              style: TextStyle(
-                color: CupertinoColors.systemOrange,
+              Text(
+                'iNotes',
+                style: TextStyle(
+                  color: CupertinoColors.systemOrange,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
+
 
 
 
@@ -1396,19 +1540,7 @@ class _NoteEditorState extends State<NoteEditor> {
                             // Justify
                             SizedBox(
                               width: MediaQuery.of(context).size.width * 0.18,
-                              child: CupertinoButton(
-                                padding: EdgeInsets.zero,
-                                color: textAlignment == 'justify'
-                                    ? CupertinoColors.systemOrange
-                                    : CupertinoColors.systemGrey5,
-                                borderRadius: BorderRadius.circular(8),
-                                child: Icon(
-                                  Icons.format_align_justify,
-                                  color: textAlignment == 'justify' ? CupertinoColors.white : CupertinoColors.black,
-                                  size: MediaQuery.of(context).size.width * 0.05,
-                                ),
-                                onPressed: () => _applyAlignment('justify'),
-                              ),
+
                             ),
                           ],
                         ),
